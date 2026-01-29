@@ -9,6 +9,9 @@
  * 3. Download and parse JSONL results
  * 4. Write customers.json to output directory
  *
+ * Falls back to REST API if GraphQL bulk operations fail with ACCESS_DENIED
+ * (required for Shopify Basic plans without Protected Customer Data access).
+ *
  * @module backup/customers-bulk
  * @see https://shopify.dev/api/admin-graphql/2025-01/objects/BulkOperation
  */
@@ -21,9 +24,11 @@ import type { BulkCustomerNode } from '../types/graphql.js';
 import { submitBulkOperation, CUSTOMER_BULK_QUERY } from '../graphql/bulk-operations.js';
 import { pollBulkOperation } from '../graphql/polling.js';
 import { downloadBulkOperationResults } from '../graphql/download.js';
+import { reconstructBulkData, type BulkOperationRecord } from '../graphql/jsonl.js';
+import { fetchAllPages } from '../pagination.js';
 
 /**
- * Backup all customers using Shopify bulk operations.
+ * Backup all customers using Shopify bulk operations with REST API fallback.
  *
  * This function orchestrates the complete bulk operation workflow:
  * - Submits a bulk operation query for all customers
@@ -31,19 +36,24 @@ import { downloadBulkOperationResults } from '../graphql/download.js';
  * - Downloads the JSONL results and parses them
  * - Writes the customers to a JSON file in the output directory
  *
+ * If GraphQL bulk operations fail with ACCESS_DENIED (common on Basic plans
+ * without Protected Customer Data access), automatically falls back to REST API.
+ *
  * The bulk operation approach is preferred for large stores as it:
  * - Handles pagination automatically
  * - Is not subject to the same rate limits as standard queries
  * - Can export millions of records efficiently
  *
- * @param client - GraphQL client with request method for API calls
+ * @param graphqlClient - GraphQL client with request method for API calls
  * @param outputDir - Directory where customers.json will be written
+ * @param restClient - Optional REST client for fallback (required if fallback is needed)
  * @returns BackupResult indicating success/failure, count of customers, and any error message
  *
  * @example
  * ```typescript
- * const client = createGraphQLClient(shop, accessToken);
- * const result = await backupCustomersBulk(client, '/backups/2024-01-15');
+ * const graphqlClient = createGraphQLClient(config);
+ * const restClient = createShopifyClient(config);
+ * const result = await backupCustomersBulk(graphqlClient, '/backups/2024-01-15', restClient);
  *
  * if (result.success) {
  *   console.log(`Backed up ${result.count} customers`);
@@ -53,22 +63,25 @@ import { downloadBulkOperationResults } from '../graphql/download.js';
  * ```
  */
 export async function backupCustomersBulk(
-  client: Pick<GraphQLClient, 'request'>,
-  outputDir: string
+  graphqlClient: Pick<GraphQLClient, 'request'>,
+  outputDir: string,
+  restClient?: any
 ): Promise<BackupResult> {
   try {
     // Step 1: Submit bulk operation with customer query
-    const operationId = await submitBulkOperation(client, CUSTOMER_BULK_QUERY);
+    const operationId = await submitBulkOperation(graphqlClient, CUSTOMER_BULK_QUERY);
 
     // Step 2: Poll for completion
-    const completedOperation = await pollBulkOperation(client, operationId, {});
+    const completedOperation = await pollBulkOperation(graphqlClient, operationId, {});
 
-    // Step 3: Download results (handle null URL for empty results)
-    // When a store has no customers, the completed operation has url: null
+    // Step 3: Download results and reconstruct nested hierarchy
+    // Shopify returns flat JSONL with __parentId references - we need to reconstruct
+    // the hierarchy (e.g., customer -> addresses, metafields)
     let customers: BulkCustomerNode[] = [];
 
     if (completedOperation.url) {
-      customers = await downloadBulkOperationResults<BulkCustomerNode>(completedOperation.url);
+      const flatData = await downloadBulkOperationResults<BulkOperationRecord>(completedOperation.url);
+      customers = reconstructBulkData<BulkCustomerNode>(flatData, 'Customer');
     }
 
     // Step 4: Write customers.json to output directory
@@ -80,14 +93,44 @@ export async function backupCustomersBulk(
       count: customers.length,
     };
   } catch (error) {
-    // Handle all errors and return failure result
-    // This includes: submission failures, polling timeouts, download errors, and file write errors
     const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Check if this is an ACCESS_DENIED error - fall back to REST API
+    if (errorMessage.includes('ACCESS_DENIED') && restClient) {
+      console.log('[customers] GraphQL bulk operation denied, falling back to REST API');
+      return backupCustomersRest(restClient, outputDir);
+    }
 
     return {
       success: false,
       count: 0,
       error: errorMessage,
     };
+  }
+}
+
+/**
+ * Backup customers using REST API (fallback for plans without Protected Customer Data access)
+ */
+async function backupCustomersRest(
+  client: any,
+  outputDir: string
+): Promise<BackupResult> {
+  try {
+    const { items: allCustomers } = await fetchAllPages(client, 'customers', 'customers');
+
+    // REST API doesn't include metafields efficiently - initialize as empty
+    for (const customer of allCustomers) {
+      customer.metafields = [];
+    }
+
+    await fs.writeFile(
+      path.join(outputDir, 'customers.json'),
+      JSON.stringify(allCustomers, null, 2),
+    );
+
+    return { success: true, count: allCustomers.length };
+  } catch (error: any) {
+    return { success: false, count: 0, error: error.message };
   }
 }

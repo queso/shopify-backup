@@ -22,8 +22,10 @@ import type {
 
 // Mock all backup modules
 vi.mock('../products.js', () => ({ backupProducts: vi.fn() }));
+vi.mock('../products-bulk.js', () => ({ backupProductsBulk: vi.fn() }));
 vi.mock('../customers-bulk.js', () => ({ backupCustomersBulk: vi.fn() }));
-vi.mock('../orders.js', () => ({ backupOrders: vi.fn() }));
+vi.mock('../orders-bulk.js', () => ({ backupOrdersBulk: vi.fn() }));
+vi.mock('../collections-bulk.js', () => ({ backupCollectionsBulk: vi.fn() }));
 vi.mock('../content.js', () => ({ backupContent: vi.fn() }));
 vi.mock('../../images.js', () => ({ downloadProductImages: vi.fn() }));
 vi.mock('../../cleanup.js', () => ({ cleanupOldBackups: vi.fn() }));
@@ -37,9 +39,10 @@ vi.mock('../../graphql/client.js', () => ({
 
 // Import the module under test after mocks are set up
 import { runBackup } from '../../backup.js';
-import { backupProducts } from '../products.js';
+import { backupProductsBulk } from '../products-bulk.js';
 import { backupCustomersBulk } from '../customers-bulk.js';
-import { backupOrders } from '../orders.js';
+import { backupOrdersBulk } from '../orders-bulk.js';
+import { backupCollectionsBulk } from '../collections-bulk.js';
 import { backupContent } from '../content.js';
 import { downloadProductImages } from '../../images.js';
 import { cleanupOldBackups } from '../../cleanup.js';
@@ -62,13 +65,14 @@ function failedResult(error: string): BackupResult {
 }
 
 function setupAllMocksSuccess(): void {
-  const productsData = [{ id: 1, title: 'Test Product' }];
-  vi.mocked(backupProducts).mockResolvedValue({
+  const productsData = [{ id: 'gid://shopify/Product/1', title: 'Test Product', images: [] }];
+  vi.mocked(backupProductsBulk).mockResolvedValue({
     result: successResult(10),
     products: productsData,
   } as any);
   vi.mocked(backupCustomersBulk).mockResolvedValue(successResult(5));
-  vi.mocked(backupOrders).mockResolvedValue(successResult(8));
+  vi.mocked(backupOrdersBulk).mockResolvedValue(successResult(8));
+  vi.mocked(backupCollectionsBulk).mockResolvedValue(successResult(2));
   vi.mocked(backupContent).mockResolvedValue({
     pages: successResult(3),
     collections: successResult(2),
@@ -113,15 +117,16 @@ describe('runBackup - Customer Bulk Backup Integration', () => {
       expect(backupCustomersBulk).toHaveBeenCalledTimes(1);
     });
 
-    it('should pass GraphQL client and output directory to backupCustomersBulk', async () => {
+    it('should pass GraphQL client, output directory, and REST client to backupCustomersBulk', async () => {
       const config = makeConfig(tempDir);
 
       await runBackup(config);
 
-      // Verify it was called with a client and the output directory
+      // Verify it was called with GraphQL client, output directory, and REST client for fallback
       expect(backupCustomersBulk).toHaveBeenCalledWith(
         expect.anything(), // GraphQL client
-        expect.stringContaining(tempDir) // Output directory path
+        expect.stringContaining(tempDir), // Output directory path
+        expect.anything() // REST client for fallback
       );
     });
   });
@@ -137,8 +142,8 @@ describe('runBackup - Customer Bulk Backup Integration', () => {
       const result = await runBackup(config);
 
       // Other modules should still have been called
-      expect(backupProducts).toHaveBeenCalled();
-      expect(backupOrders).toHaveBeenCalled();
+      expect(backupProductsBulk).toHaveBeenCalled();
+      expect(backupOrdersBulk).toHaveBeenCalled();
       expect(backupContent).toHaveBeenCalled();
       expect(downloadProductImages).toHaveBeenCalled();
       expect(cleanupOldBackups).toHaveBeenCalled();
@@ -171,8 +176,8 @@ describe('runBackup - Customer Bulk Backup Integration', () => {
       const result = await runBackup(config);
 
       // Other modules should still have been called
-      expect(backupProducts).toHaveBeenCalled();
-      expect(backupOrders).toHaveBeenCalled();
+      expect(backupProductsBulk).toHaveBeenCalled();
+      expect(backupOrdersBulk).toHaveBeenCalled();
       expect(backupContent).toHaveBeenCalled();
 
       // Error should be captured

@@ -77,20 +77,80 @@ describe('backupCustomersBulk', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  /**
+   * Helper to create flat JSONL data with __parentId references
+   * (as Shopify actually returns it from bulk operations)
+   */
+  function createFlatCustomerData(
+    customerId: string,
+    options?: {
+      email?: string;
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      state?: string;
+      tags?: string[];
+      createdAt?: string;
+      updatedAt?: string;
+      addresses?: Array<{ id: string; address1: string; city: string; province?: string; country?: string; zip?: string }>;
+      metafields?: Array<{ id: string; namespace: string; key: string; value: string }>;
+    }
+  ): Array<Record<string, unknown>> {
+    const parentId = `gid://shopify/Customer/${customerId}`;
+    const result: Array<Record<string, unknown>> = [{
+      id: parentId,
+      email: options?.email ?? `customer${customerId}@example.com`,
+      firstName: options?.firstName ?? `First${customerId}`,
+      lastName: options?.lastName,
+      phone: options?.phone,
+      state: options?.state ?? 'ENABLED',
+      tags: options?.tags ?? [],
+      createdAt: options?.createdAt ?? '2024-01-01T00:00:00Z',
+      updatedAt: options?.updatedAt ?? '2024-01-15T12:00:00Z',
+    }];
+
+    // Add addresses with __parentId
+    for (const address of options?.addresses ?? []) {
+      result.push({
+        id: address.id,
+        address1: address.address1,
+        city: address.city,
+        province: address.province,
+        country: address.country,
+        zip: address.zip,
+        __parentId: parentId,
+      });
+    }
+
+    // Add metafields with __parentId
+    for (const metafield of options?.metafields ?? []) {
+      result.push({
+        id: metafield.id,
+        namespace: metafield.namespace,
+        key: metafield.key,
+        value: metafield.value,
+        type: 'single_line_text_field',
+        __parentId: parentId,
+      });
+    }
+
+    return result;
+  }
+
   describe('successful backup end-to-end', () => {
     it('should orchestrate bulk operation flow and write customers.json', async () => {
       const operationId = 'gid://shopify/BulkOperation/123456789';
       const resultUrl = 'https://storage.shopifycloud.com/customers.jsonl';
 
-      // Mock the bulk operation flow
+      // Mock the bulk operation flow with flat JSONL data
       vi.mocked(submitBulkOperation).mockResolvedValue(operationId);
       vi.mocked(pollBulkOperation).mockResolvedValue(
         createCompletedOperation({ url: resultUrl, objectCount: '3' })
       );
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([
-        { id: 'gid://shopify/Customer/1', email: 'alice@example.com', firstName: 'Alice' },
-        { id: 'gid://shopify/Customer/2', email: 'bob@example.com', firstName: 'Bob' },
-        { id: 'gid://shopify/Customer/3', email: 'charlie@example.com', firstName: 'Charlie' },
+        ...createFlatCustomerData('1', { email: 'alice@example.com', firstName: 'Alice' }),
+        ...createFlatCustomerData('2', { email: 'bob@example.com', firstName: 'Bob' }),
+        ...createFlatCustomerData('3', { email: 'charlie@example.com', firstName: 'Charlie' }),
       ]);
 
       const result = await backupCustomersBulk(mockClient as any, tmpDir);
@@ -267,9 +327,9 @@ describe('backupCustomersBulk', () => {
     it('should write valid JSON file', async () => {
       vi.mocked(submitBulkOperation).mockResolvedValue('gid://shopify/BulkOperation/123');
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
-      vi.mocked(downloadBulkOperationResults).mockResolvedValue([
-        { id: 'gid://shopify/Customer/1', email: 'test@example.com' },
-      ]);
+      vi.mocked(downloadBulkOperationResults).mockResolvedValue(
+        createFlatCustomerData('1', { email: 'test@example.com' })
+      );
 
       await backupCustomersBulk(mockClient as any, tmpDir);
 
@@ -291,14 +351,9 @@ describe('backupCustomersBulk', () => {
     it('should write customers to customers.json in output directory', async () => {
       vi.mocked(submitBulkOperation).mockResolvedValue('gid://shopify/BulkOperation/123');
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
-      vi.mocked(downloadBulkOperationResults).mockResolvedValue([
-        {
-          id: 'gid://shopify/Customer/42',
-          email: 'customer@shop.com',
-          firstName: 'Test',
-          lastName: 'Customer',
-        },
-      ]);
+      vi.mocked(downloadBulkOperationResults).mockResolvedValue(
+        createFlatCustomerData('42', { email: 'customer@shop.com', firstName: 'Test', lastName: 'Customer' })
+      );
 
       await backupCustomersBulk(mockClient as any, tmpDir);
 
@@ -307,17 +362,14 @@ describe('backupCustomersBulk', () => {
       const customers = JSON.parse(content);
 
       expect(customers).toHaveLength(1);
-      expect(customers[0]).toEqual({
-        id: 'gid://shopify/Customer/42',
-        email: 'customer@shop.com',
-        firstName: 'Test',
-        lastName: 'Customer',
-      });
+      expect(customers[0].id).toBe('gid://shopify/Customer/42');
+      expect(customers[0].email).toBe('customer@shop.com');
+      expect(customers[0].firstName).toBe('Test');
+      expect(customers[0].lastName).toBe('Customer');
     });
 
-    it('should preserve all customer fields from bulk operation', async () => {
-      const customerData = {
-        id: 'gid://shopify/Customer/100',
+    it('should preserve all customer fields and reconstruct children', async () => {
+      const flatData = createFlatCustomerData('100', {
         email: 'full@example.com',
         firstName: 'Full',
         lastName: 'Customer',
@@ -328,6 +380,7 @@ describe('backupCustomersBulk', () => {
         updatedAt: '2024-01-15T12:00:00Z',
         addresses: [
           {
+            id: 'gid://shopify/MailingAddress/200',
             address1: '123 Main St',
             city: 'New York',
             province: 'NY',
@@ -336,20 +389,33 @@ describe('backupCustomersBulk', () => {
           },
         ],
         metafields: [
-          { namespace: 'custom', key: 'loyalty_tier', value: 'gold' },
+          { id: 'gid://shopify/Metafield/300', namespace: 'custom', key: 'loyalty_tier', value: 'gold' },
         ],
-      };
+      });
 
       vi.mocked(submitBulkOperation).mockResolvedValue('gid://shopify/BulkOperation/123');
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
-      vi.mocked(downloadBulkOperationResults).mockResolvedValue([customerData]);
+      vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
       await backupCustomersBulk(mockClient as any, tmpDir);
 
       const content = await fs.readFile(path.join(tmpDir, 'customers.json'), 'utf-8');
       const customers = JSON.parse(content);
 
-      expect(customers[0]).toEqual(customerData);
+      // Verify parent fields preserved
+      expect(customers[0].id).toBe('gid://shopify/Customer/100');
+      expect(customers[0].email).toBe('full@example.com');
+      expect(customers[0].firstName).toBe('Full');
+      expect(customers[0].phone).toBe('+1234567890');
+
+      // Verify children reconstructed (without __parentId)
+      expect(customers[0].addresses).toHaveLength(1);
+      expect(customers[0].addresses[0].address1).toBe('123 Main St');
+      expect(customers[0].addresses[0]).not.toHaveProperty('__parentId');
+
+      expect(customers[0].metafields).toHaveLength(1);
+      expect(customers[0].metafields[0].key).toBe('loyalty_tier');
+      expect(customers[0].metafields[0]).not.toHaveProperty('__parentId');
     });
   });
 
@@ -358,11 +424,11 @@ describe('backupCustomersBulk', () => {
       vi.mocked(submitBulkOperation).mockResolvedValue('gid://shopify/BulkOperation/123');
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([
-        { id: 'gid://shopify/Customer/1' },
-        { id: 'gid://shopify/Customer/2' },
-        { id: 'gid://shopify/Customer/3' },
-        { id: 'gid://shopify/Customer/4' },
-        { id: 'gid://shopify/Customer/5' },
+        ...createFlatCustomerData('1'),
+        ...createFlatCustomerData('2'),
+        ...createFlatCustomerData('3'),
+        ...createFlatCustomerData('4'),
+        ...createFlatCustomerData('5'),
       ]);
 
       const result: BackupResult = await backupCustomersBulk(mockClient as any, tmpDir);
