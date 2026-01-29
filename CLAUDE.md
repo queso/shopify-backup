@@ -46,26 +46,59 @@ The `src/graphql/` module provides efficient bulk data export using Shopify's Gr
 ```
 src/graphql/
 ├── client.ts          # GraphQL client wrapper with error handling
-├── bulk-operations.ts # Bulk operation submission (CUSTOMER_BULK_QUERY)
+├── bulk-operations.ts # Bulk operation submission and query constants
 ├── polling.ts         # Async polling with timeout/abort support
 ├── download.ts        # JSONL result file download
 └── jsonl.ts           # JSONL parsing and nested object reconstruction
 ```
 
+### Available Bulk Queries
+
+| Query | Description |
+|-------|-------------|
+| `CUSTOMER_BULK_QUERY` | Customers with addresses and metafields |
+| `ORDER_BULK_QUERY` | Orders with line items, transactions, fulfillments, refunds, metafields |
+| `PRODUCT_BULK_QUERY` | Products with variants, images, and metafields (including variant metafields) |
+| `COLLECTION_BULK_QUERY` | Collections with products, smart collection rules, and metafields |
+
+### Bulk Backup Modules
+
+```
+src/backup/
+├── customers-bulk.ts   # backupCustomersBulk()
+├── orders-bulk.ts      # backupOrdersBulk()
+├── products-bulk.ts    # backupProductsBulk() - returns { result, products }
+└── collections-bulk.ts # backupCollectionsBulk()
+```
+
 ### Usage Pattern
 ```typescript
 import { createGraphQLClient } from './graphql/client.js';
-import { backupCustomersBulk } from './backup/customers-bulk.js';
+import { backupOrdersBulk } from './backup/orders-bulk.js';
 
 const client = createGraphQLClient(config);
-const result = await backupCustomersBulk(client, outputDir);
+const result = await backupOrdersBulk(client, outputDir);
 // result: { success: boolean, count: number, error?: string }
 ```
+
+### JSONL Reconstruction
+Shopify bulk operations return flat JSONL with `__parentId` references. The `reconstructBulkData()` function in `jsonl.ts` handles:
+- Multiple child types per parent (products have variants, images, AND metafields)
+- Multi-level nesting (product → variant → variant metafield)
+- Type detection by Shopify GID prefix
 
 ### Why Bulk Operations?
 - **Async processing** - Shopify processes queries in background, no rate limits during execution
 - **Large datasets** - Handles 10,000+ records efficiently
+- **Complete data** - Metafields included (REST API hits rate limits for metafield fetching)
 - **JSONL format** - Streaming-friendly output, parsed with `parseJsonl()`
+
+### REST API Fallback
+Customers and orders backup automatically fall back to REST API when GraphQL returns `ACCESS_DENIED`:
+- **Shopify Basic plans** lack Protected Customer Data access for GraphQL bulk operations
+- **Higher-tier plans** (Shopify, Advanced, Plus) use fast GraphQL bulk operations
+- Fallback is automatic - no configuration needed
+- REST fallback is slower but still works (~5 min vs ~1 min for full GraphQL)
 
 ## Shopify API Rate Limits
 
@@ -76,13 +109,17 @@ const result = await backupCustomersBulk(client, outputDir);
 
 ## Data to Backup
 
-- Products (all fields, variants, metafields) - REST API
-- Product images (actual files downloaded, not just URLs) - REST API
-- **Customers** - GraphQL Bulk Operations (faster for large stores)
-- Orders - REST API
-- Pages - REST API
-- Collections - REST API
-- Blogs/articles - REST API
+**GraphQL Bulk Operations (primary method):**
+- Customers (with addresses and metafields)
+- Orders (with line items, transactions, fulfillments, refunds, metafields)
+- Products (with variants, images, metafields, variant metafields)
+- Collections (with product associations, smart collection rules, metafields)
+
+**REST API:**
+- Product images (actual files downloaded, not just URLs)
+- Pages
+- Blogs/articles
+- Shop metafields
 
 ## A(i)-Team Integration
 

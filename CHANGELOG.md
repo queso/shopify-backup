@@ -2,6 +2,86 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-01-29
+
+### Added
+
+#### REST API Fallback for Protected Customer Data
+- **Automatic fallback** when GraphQL bulk operations fail with `ACCESS_DENIED`
+  - Shopify Basic plans lack Protected Customer Data access for GraphQL
+  - Customers and orders automatically fall back to REST API pagination
+  - Higher-tier plans (Shopify, Advanced, Plus) use fast GraphQL bulk operations
+- Fallback logs: `[customers] GraphQL bulk operation denied, falling back to REST API`
+
+#### GraphQL Bulk Operations for Orders, Products, and Collections
+- **ORDER_BULK_QUERY** - Comprehensive order export query
+  - Core order fields (name, email, phone, dates, status)
+  - Financial data (totalPriceSet, subtotalPriceSet, taxes, discounts)
+  - Customer reference
+  - Line items with pricing
+  - Transactions, fulfillments, refunds
+  - Shipping and billing addresses
+  - Metafields (previously unavailable via REST due to rate limits)
+
+- **PRODUCT_BULK_QUERY** - Complete product export query
+  - All product fields (title, handle, status, vendor, productType)
+  - Product options
+  - Images with URL and dimensions
+  - Variants with full details
+  - Product metafields
+  - Variant metafields (nested)
+
+- **COLLECTION_BULK_QUERY** - Collection export query
+  - Collection fields (title, handle, sortOrder)
+  - Smart collection rules (ruleSet)
+  - Product associations
+  - Metafields
+
+- **reconstructBulkData()** - Multi-type JSONL reconstruction
+  - Handles multiple child types per parent (products have variants, images, AND metafields)
+  - Multi-level nesting support (product → variant → variant metafield)
+  - Type detection by Shopify GID prefix
+
+#### New Backup Modules
+- `src/backup/orders-bulk.ts` - `backupOrdersBulk()` function
+- `src/backup/products-bulk.ts` - `backupProductsBulk()` function (returns products for image download)
+- `src/backup/collections-bulk.ts` - `backupCollectionsBulk()` function
+
+#### Type Definitions
+- `BulkOrderNode` - Full order structure with all nested types
+- `BulkProductNode` - Product with variants, images, metafields
+- `BulkCollectionNode` - Collection with rules and product associations
+- `Metafield` - Reusable metafield interface
+
+### Changed
+- **Orders backup now uses GraphQL bulk operations** instead of REST API
+  - Metafields now included (previously stubbed as empty arrays)
+- **Products backup now uses GraphQL bulk operations** instead of REST API
+  - Product metafields now included
+  - Variant metafields now included
+- **Collections backup now uses GraphQL bulk operations** instead of REST API
+  - Metafields now included
+  - Smart collection rules preserved
+- **Image download** now supports both REST (`src`) and GraphQL (`url`) formats
+- Updated `src/backup.ts` to use all bulk backup functions
+
+### Deprecated
+- `backupOrders()` in `src/backup/orders.ts` - Use `backupOrdersBulk()` instead
+- `backupProducts()` in `src/backup/products.ts` - Use `backupProductsBulk()` instead
+
+### Fixed
+- JSONL reconstruction for multi-level nested objects (variant metafields were not attached to variants)
+- JSONL reconstruction handles records without `id` field (null guard)
+- Removed invalid GraphQL fields from bulk queries:
+  - `ProductVariant`: removed `requiresShipping`, `weight`, `weightUnit` (not available in 2025-01 API)
+  - `Order`: removed `fulfillmentStatus` (use `displayFulfillmentStatus` instead)
+
+### Technical Details
+- 319 tests for GraphQL and backup modules
+- All bulk operations include metafields (resolves known limitation from v0.1.0)
+- Tested: 89 products, 3,308 customers, 6,415 orders backed up successfully
+- Performance: ~5 min total with REST fallback, ~1 min with full GraphQL access
+
 ## [0.2.0] - 2026-01-29
 
 ### Added
