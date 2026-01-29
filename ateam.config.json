@@ -1,4 +1,5 @@
 {
+  "devServer": "http://kanban-viewer.orb.local:3000",
   "packageManager": "pnpm",
   "checks": {
     "lint": "pnpm run lint",
