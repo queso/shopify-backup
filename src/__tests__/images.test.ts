@@ -180,4 +180,137 @@ describe('downloadProductImages', () => {
     const files = fs.readdirSync(imgDir).sort();
     expect(files).toEqual(['1.jpg', '2.png', '3.webp']);
   });
+
+  // WI-031: GraphQL Image Structure Support
+  describe('GraphQL image structure support', () => {
+    it('should download images with REST structure (image.src field)', async () => {
+      const products = [
+        makeProduct(1000, [
+          { src: 'https://cdn.shopify.com/rest-image.jpg', position: 1 },
+        ]),
+      ];
+
+      const result = await downloadProductImages(products, tempDir);
+
+      expect(result.downloaded).toBe(1);
+      expect(fs.existsSync(path.join(tempDir, 'images', '1000', '1.jpg'))).toBe(true);
+    });
+
+    it('should download images with GraphQL structure (image.url field)', async () => {
+      // GraphQL bulk operations return images with 'url' instead of 'src'
+      const products = [
+        {
+          id: 1001,
+          images: [
+            { url: 'https://cdn.shopify.com/graphql-image.png', position: 1 },
+          ],
+        },
+      ];
+
+      const result = await downloadProductImages(products, tempDir);
+
+      expect(result.downloaded).toBe(1);
+      expect(fs.existsSync(path.join(tempDir, 'images', '1001', '1.png'))).toBe(true);
+    });
+
+    it('should handle products with no images gracefully', async () => {
+      const products = [
+        { id: 1002, images: [] },
+        { id: 1003, images: null },
+        { id: 1004 }, // no images property at all
+      ];
+
+      const result = await downloadProductImages(products, tempDir);
+
+      expect(result.success).toBe(true);
+      expect(result.downloaded).toBe(0);
+      expect(result.failed).toBe(0);
+    });
+
+    it('should detect extension from REST URL format', async () => {
+      const products = [
+        makeProduct(1005, [
+          { src: 'https://cdn.shopify.com/s/files/1/0123/product.webp?v=123', position: 1 },
+        ]),
+      ];
+
+      await downloadProductImages(products, tempDir);
+
+      expect(fs.existsSync(path.join(tempDir, 'images', '1005', '1.webp'))).toBe(true);
+    });
+
+    it('should detect extension from GraphQL URL format', async () => {
+      // GraphQL may return URLs with different query params or formats
+      const products = [
+        {
+          id: 1006,
+          images: [
+            { url: 'https://cdn.shopify.com/s/files/1/0123/image.png?width=1024&height=1024', position: 1 },
+          ],
+        },
+      ];
+
+      await downloadProductImages(products, tempDir);
+
+      expect(fs.existsSync(path.join(tempDir, 'images', '1006', '1.png'))).toBe(true);
+    });
+
+    it('should handle mixed products (some REST, some GraphQL format)', async () => {
+      const products = [
+        // REST format product
+        makeProduct(1007, [
+          { src: 'https://cdn.shopify.com/rest.jpg', position: 1 },
+        ]),
+        // GraphQL format product
+        {
+          id: 1008,
+          images: [
+            { url: 'https://cdn.shopify.com/graphql.png', position: 1 },
+          ],
+        },
+      ];
+
+      const result = await downloadProductImages(products, tempDir);
+
+      expect(result.downloaded).toBe(2);
+      expect(fs.existsSync(path.join(tempDir, 'images', '1007', '1.jpg'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, 'images', '1008', '1.png'))).toBe(true);
+    });
+
+    it('should default to .jpg when URL has no extension', async () => {
+      const products = [
+        {
+          id: 1009,
+          images: [
+            { url: 'https://cdn.shopify.com/s/files/1/0123/image', position: 1 },
+          ],
+        },
+      ];
+
+      await downloadProductImages(products, tempDir);
+
+      expect(fs.existsSync(path.join(tempDir, 'images', '1009', '1.jpg'))).toBe(true);
+    });
+
+    it('should prefer url over src when both are present', async () => {
+      // In case of data migration, both might exist - prefer GraphQL url
+      const products = [
+        {
+          id: 1010,
+          images: [
+            {
+              src: 'https://cdn.shopify.com/old-rest.jpg',
+              url: 'https://cdn.shopify.com/new-graphql.png',
+              position: 1,
+            },
+          ],
+        },
+      ];
+
+      await downloadProductImages(products, tempDir);
+
+      // Should use the url field
+      expect(mockFetch).toHaveBeenCalledWith('https://cdn.shopify.com/new-graphql.png');
+    });
+  });
 });

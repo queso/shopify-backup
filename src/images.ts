@@ -28,7 +28,11 @@ export async function downloadProductImages(
     fs.mkdirSync(productDir, { recursive: true });
 
     for (const image of product.images) {
-      const ext = getExtension(image.src);
+      // Support both GraphQL (url) and REST (src) formats, prefer url
+      const imageUrl = image.url || image.src;
+      if (!imageUrl) continue;
+
+      const ext = getExtension(imageUrl);
       const filename = `${image.position}${ext}`;
       const filePath = path.join(productDir, filename);
 
@@ -40,7 +44,7 @@ export async function downloadProductImages(
 
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         try {
-          const response = await fetch(image.src);
+          const response = await fetch(imageUrl);
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
@@ -50,9 +54,9 @@ export async function downloadProductImages(
           break;
         } catch (error: any) {
           if (attempt === MAX_RETRIES - 1) {
-            console.warn(`Failed to download ${image.src} after ${MAX_RETRIES} attempts: ${error.message}`);
+            console.warn(`Failed to download ${imageUrl} after ${MAX_RETRIES} attempts: ${error.message}`);
             result.failed++;
-            result.failedUrls.push(image.src);
+            result.failedUrls.push(imageUrl);
           }
         }
       }

@@ -3,6 +3,11 @@ import { join } from 'node:path';
 import type { BackupResult } from '../types.js';
 import { fetchAllPages } from '../pagination.js';
 
+/**
+ * @deprecated Use backupOrdersBulk from ./orders-bulk.js instead.
+ * This REST-based function is kept for reference but is no longer used.
+ * The bulk operations approach provides better performance and includes metafields.
+ */
 export async function backupOrders(
   client: any,
   outputDir: string,

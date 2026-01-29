@@ -3,9 +3,10 @@ import * as path from 'node:path';
 import type { BackupConfig, BackupStatus } from './types.js';
 import { createShopifyClient } from './shopify.js';
 import { createGraphQLClient } from './graphql/client.js';
-import { backupProducts } from './backup/products.js';
+import { backupProductsBulk } from './backup/products-bulk.js';
 import { backupCustomersBulk } from './backup/customers-bulk.js';
-import { backupOrders } from './backup/orders.js';
+import { backupOrdersBulk } from './backup/orders-bulk.js';
+import { backupCollectionsBulk } from './backup/collections-bulk.js';
 import { backupContent } from './backup/content.js';
 import { downloadProductImages } from './images.js';
 import { cleanupOldBackups } from './cleanup.js';
@@ -32,10 +33,10 @@ export async function runBackup(config: BackupConfig): Promise<BackupStatus> {
     errors: [],
   };
 
-  // Products
+  // Products (using GraphQL bulk operations)
   let productsData: any[] = [];
   try {
-    const { result, products } = await backupProducts(client, outputDir);
+    const { result, products } = await backupProductsBulk(graphqlClient, outputDir);
     status.modules['products'] = result.success ? 'success' : 'failed';
     status.counts['products'] = result.count;
     if (!result.success && result.error) {
@@ -48,9 +49,9 @@ export async function runBackup(config: BackupConfig): Promise<BackupStatus> {
     status.errors.push(`Products backup failed: ${error.message}`);
   }
 
-  // Customers (using GraphQL bulk operations)
+  // Customers (using GraphQL bulk operations with REST fallback)
   try {
-    const result = await backupCustomersBulk(graphqlClient, outputDir);
+    const result = await backupCustomersBulk(graphqlClient, outputDir, client);
     status.modules['customers'] = result.success ? 'success' : 'failed';
     status.counts['customers'] = result.count;
     if (!result.success && result.error) {
@@ -62,9 +63,9 @@ export async function runBackup(config: BackupConfig): Promise<BackupStatus> {
     status.errors.push(`Customers backup failed: ${error.message}`);
   }
 
-  // Orders
+  // Orders (using GraphQL bulk operations with REST fallback)
   try {
-    const result = await backupOrders(client, outputDir);
+    const result = await backupOrdersBulk(graphqlClient, outputDir, client);
     status.modules['orders'] = result.success ? 'success' : 'failed';
     status.counts['orders'] = result.count;
     if (!result.success && result.error) {
@@ -76,13 +77,25 @@ export async function runBackup(config: BackupConfig): Promise<BackupStatus> {
     status.errors.push(`Orders backup failed: ${error.message}`);
   }
 
-  // Content (pages, collections, blogs, shop metafields)
+  // Collections (using GraphQL bulk operations)
+  try {
+    const result = await backupCollectionsBulk(graphqlClient, outputDir);
+    status.modules['collections'] = result.success ? 'success' : 'failed';
+    status.counts['collections'] = result.count;
+    if (!result.success && result.error) {
+      status.errors.push(`Collections backup failed: ${result.error}`);
+    }
+  } catch (error: any) {
+    status.modules['collections'] = 'failed';
+    status.counts['collections'] = 0;
+    status.errors.push(`Collections backup failed: ${error.message}`);
+  }
+
+  // Content (pages, blogs, shop metafields) - collections handled separately via bulk ops
   try {
     const contentResult = await backupContent(client, outputDir);
     status.modules['pages'] = contentResult.pages.success ? 'success' : 'failed';
     status.counts['pages'] = contentResult.pages.count;
-    status.modules['collections'] = contentResult.collections.success ? 'success' : 'failed';
-    status.counts['collections'] = contentResult.collections.count;
     status.modules['blogs'] = contentResult.blogs.success ? 'success' : 'failed';
     status.counts['blogs'] = contentResult.blogs.count;
     status.modules['shop_metafields'] = contentResult.shopMetafields.success ? 'success' : 'failed';
@@ -90,9 +103,6 @@ export async function runBackup(config: BackupConfig): Promise<BackupStatus> {
 
     if (!contentResult.pages.success && contentResult.pages.error) {
       status.errors.push(`Pages backup failed: ${contentResult.pages.error}`);
-    }
-    if (!contentResult.collections.success && contentResult.collections.error) {
-      status.errors.push(`Collections backup failed: ${contentResult.collections.error}`);
     }
     if (!contentResult.blogs.success && contentResult.blogs.error) {
       status.errors.push(`Blogs backup failed: ${contentResult.blogs.error}`);
@@ -102,7 +112,6 @@ export async function runBackup(config: BackupConfig): Promise<BackupStatus> {
     }
   } catch (error: any) {
     status.modules['pages'] = 'failed';
-    status.modules['collections'] = 'failed';
     status.modules['blogs'] = 'failed';
     status.modules['shop_metafields'] = 'failed';
     status.errors.push(`Content backup failed: ${error.message}`);

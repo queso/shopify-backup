@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { submitBulkOperation, CUSTOMER_BULK_QUERY } from '../bulk-operations.js';
+import {
+  submitBulkOperation,
+  CUSTOMER_BULK_QUERY,
+  ORDER_BULK_QUERY,
+  PRODUCT_BULK_QUERY,
+  COLLECTION_BULK_QUERY,
+} from '../bulk-operations.js';
 import { BulkOperationStatus } from '../../types/graphql.js';
 import type { GraphQLResponse, BulkOperationRunQueryResponse, UserError, GraphQLError } from '../../types/graphql.js';
 
@@ -240,5 +246,141 @@ describe('CUSTOMER_BULK_QUERY', () => {
     expect(CUSTOMER_BULK_QUERY).toContain('namespace');
     expect(CUSTOMER_BULK_QUERY).toContain('key');
     expect(CUSTOMER_BULK_QUERY).toContain('value');
+  });
+});
+
+describe('ORDER_BULK_QUERY', () => {
+  it('should be defined as a constant', () => {
+    expect(ORDER_BULK_QUERY).toBeDefined();
+    expect(typeof ORDER_BULK_QUERY).toBe('string');
+  });
+
+  it('should contain the orders query with edges/node pattern', () => {
+    expect(ORDER_BULK_QUERY).toContain('orders');
+    expect(ORDER_BULK_QUERY).toContain('edges');
+    expect(ORDER_BULK_QUERY).toContain('node');
+  });
+
+  it('should include core order fields', () => {
+    expect(ORDER_BULK_QUERY).toContain('id');
+    expect(ORDER_BULK_QUERY).toContain('legacyResourceId');
+    expect(ORDER_BULK_QUERY).toContain('name');
+    expect(ORDER_BULK_QUERY).toContain('email');
+    expect(ORDER_BULK_QUERY).toContain('createdAt');
+    expect(ORDER_BULK_QUERY).toContain('updatedAt');
+  });
+
+  it('should include financial fields', () => {
+    expect(ORDER_BULK_QUERY).toContain('totalPriceSet');
+    expect(ORDER_BULK_QUERY).toContain('currencyCode');
+    expect(ORDER_BULK_QUERY).toContain('displayFinancialStatus');
+  });
+
+  it('should include fulfillment status', () => {
+    expect(ORDER_BULK_QUERY).toContain('displayFulfillmentStatus');
+  });
+
+  it('should include customer reference', () => {
+    expect(ORDER_BULK_QUERY).toContain('customer');
+  });
+
+  it('should include address fields', () => {
+    expect(ORDER_BULK_QUERY).toContain('billingAddress');
+    expect(ORDER_BULK_QUERY).toContain('shippingAddress');
+  });
+
+  it('should include nested line items', () => {
+    expect(ORDER_BULK_QUERY).toContain('lineItems');
+  });
+
+  it('should include transactions', () => {
+    expect(ORDER_BULK_QUERY).toContain('transactions');
+  });
+
+  it('should include fulfillments', () => {
+    expect(ORDER_BULK_QUERY).toContain('fulfillments');
+  });
+
+  it('should include refunds', () => {
+    expect(ORDER_BULK_QUERY).toContain('refunds');
+  });
+
+  it('should include metafields', () => {
+    expect(ORDER_BULK_QUERY).toContain('metafields');
+    expect(ORDER_BULK_QUERY).toContain('namespace');
+    expect(ORDER_BULK_QUERY).toContain('key');
+    expect(ORDER_BULK_QUERY).toContain('value');
+  });
+});
+
+describe('PRODUCT_BULK_QUERY', () => {
+  it('should be defined as a constant', () => {
+    expect(PRODUCT_BULK_QUERY).toBeDefined();
+    expect(typeof PRODUCT_BULK_QUERY).toBe('string');
+  });
+
+  it('should contain the products query with edges/node pattern', () => {
+    expect(PRODUCT_BULK_QUERY).toContain('products');
+    expect(PRODUCT_BULK_QUERY).toContain('edges');
+    expect(PRODUCT_BULK_QUERY).toContain('node');
+  });
+
+  it('should include core product fields', () => {
+    expect(PRODUCT_BULK_QUERY).toContain('id');
+    expect(PRODUCT_BULK_QUERY).toContain('legacyResourceId');
+    expect(PRODUCT_BULK_QUERY).toContain('title');
+    expect(PRODUCT_BULK_QUERY).toContain('handle');
+    expect(PRODUCT_BULK_QUERY).toContain('status');
+  });
+
+  it('should include options', () => {
+    expect(PRODUCT_BULK_QUERY).toContain('options');
+  });
+
+  it('should include images with url', () => {
+    expect(PRODUCT_BULK_QUERY).toContain('images');
+    expect(PRODUCT_BULK_QUERY).toContain('url');
+  });
+
+  it('should include variants with metafields', () => {
+    expect(PRODUCT_BULK_QUERY).toContain('variants');
+  });
+
+  it('should include metafields', () => {
+    expect(PRODUCT_BULK_QUERY).toContain('metafields');
+    expect(PRODUCT_BULK_QUERY).toContain('namespace');
+    expect(PRODUCT_BULK_QUERY).toContain('key');
+    expect(PRODUCT_BULK_QUERY).toContain('value');
+  });
+});
+
+describe('COLLECTION_BULK_QUERY', () => {
+  it('should be defined as a constant', () => {
+    expect(COLLECTION_BULK_QUERY).toBeDefined();
+    expect(typeof COLLECTION_BULK_QUERY).toBe('string');
+  });
+
+  it('should contain the collections query with edges/node pattern', () => {
+    expect(COLLECTION_BULK_QUERY).toContain('collections');
+    expect(COLLECTION_BULK_QUERY).toContain('edges');
+    expect(COLLECTION_BULK_QUERY).toContain('node');
+  });
+
+  it('should include core collection fields', () => {
+    expect(COLLECTION_BULK_QUERY).toContain('id');
+    expect(COLLECTION_BULK_QUERY).toContain('legacyResourceId');
+    expect(COLLECTION_BULK_QUERY).toContain('title');
+    expect(COLLECTION_BULK_QUERY).toContain('handle');
+  });
+
+  it('should include ruleSet for smart collections', () => {
+    expect(COLLECTION_BULK_QUERY).toContain('ruleSet');
+  });
+
+  it('should include metafields', () => {
+    expect(COLLECTION_BULK_QUERY).toContain('metafields');
+    expect(COLLECTION_BULK_QUERY).toContain('namespace');
+    expect(COLLECTION_BULK_QUERY).toContain('key');
+    expect(COLLECTION_BULK_QUERY).toContain('value');
   });
 });

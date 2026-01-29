@@ -83,6 +83,430 @@ export const CUSTOMER_BULK_QUERY = `
 `;
 
 /**
+ * Order bulk query for exporting all orders with line items, transactions, and fulfillments
+ * Used for order backups via GraphQL bulk operations
+ */
+export const ORDER_BULK_QUERY = `
+{
+  orders {
+    edges {
+      node {
+        id
+        legacyResourceId
+        name
+        email
+        phone
+        createdAt
+        updatedAt
+        processedAt
+        closedAt
+        cancelledAt
+        cancelReason
+        displayFinancialStatus
+        displayFulfillmentStatus
+        confirmed
+        test
+        taxesIncluded
+        currencyCode
+        presentmentCurrencyCode
+        subtotalPriceSet {
+          shopMoney {
+            amount
+            currencyCode
+          }
+        }
+        totalPriceSet {
+          shopMoney {
+            amount
+            currencyCode
+          }
+        }
+        totalTaxSet {
+          shopMoney {
+            amount
+            currencyCode
+          }
+        }
+        totalDiscountsSet {
+          shopMoney {
+            amount
+            currencyCode
+          }
+        }
+        totalShippingPriceSet {
+          shopMoney {
+            amount
+            currencyCode
+          }
+        }
+        totalRefundedSet {
+          shopMoney {
+            amount
+            currencyCode
+          }
+        }
+        currentTotalPriceSet {
+          shopMoney {
+            amount
+            currencyCode
+          }
+        }
+        note
+        tags
+        customer {
+          id
+          email
+          firstName
+          lastName
+        }
+        billingAddress {
+          firstName
+          lastName
+          company
+          address1
+          address2
+          city
+          province
+          provinceCode
+          country
+          countryCodeV2
+          zip
+          phone
+        }
+        shippingAddress {
+          firstName
+          lastName
+          company
+          address1
+          address2
+          city
+          province
+          provinceCode
+          country
+          countryCodeV2
+          zip
+          phone
+        }
+        lineItems(first: 250) {
+          edges {
+            node {
+              id
+              title
+              variantTitle
+              quantity
+              sku
+              vendor
+              requiresShipping
+              taxable
+              originalUnitPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              discountedUnitPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              originalTotalSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              discountedTotalSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              variant {
+                id
+                legacyResourceId
+              }
+              product {
+                id
+                legacyResourceId
+              }
+            }
+          }
+        }
+        shippingLines(first: 10) {
+          edges {
+            node {
+              title
+              code
+              source
+              originalPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              discountedPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+            }
+          }
+        }
+        transactions(first: 50) {
+          id
+          kind
+          status
+          gateway
+          amountSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+          }
+          createdAt
+          processedAt
+        }
+        fulfillments(first: 50) {
+          id
+          status
+          createdAt
+          updatedAt
+          trackingInfo {
+            company
+            number
+            url
+          }
+        }
+        refunds(first: 50) {
+          id
+          createdAt
+          note
+          totalRefundedSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+          }
+        }
+        discountApplications(first: 20) {
+          edges {
+            node {
+              allocationMethod
+              targetSelection
+              targetType
+              value {
+                ... on MoneyV2 {
+                  amount
+                  currencyCode
+                }
+                ... on PricingPercentageValue {
+                  percentage
+                }
+              }
+            }
+          }
+        }
+        metafields(first: 50) {
+          edges {
+            node {
+              namespace
+              key
+              value
+              type
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`;
+
+/**
+ * Product bulk query for exporting all products with variants, images, and metafields
+ * Used for product backups via GraphQL bulk operations
+ */
+export const PRODUCT_BULK_QUERY = `
+{
+  products {
+    edges {
+      node {
+        id
+        legacyResourceId
+        title
+        handle
+        descriptionHtml
+        vendor
+        productType
+        status
+        tags
+        createdAt
+        updatedAt
+        publishedAt
+        templateSuffix
+        hasOnlyDefaultVariant
+        tracksInventory
+        totalInventory
+        totalVariants
+        options {
+          id
+          name
+          position
+          values
+        }
+        images(first: 250) {
+          edges {
+            node {
+              id
+              url
+              altText
+              width
+              height
+            }
+          }
+        }
+        featuredImage {
+          id
+          url
+          altText
+        }
+        seo {
+          title
+          description
+        }
+        priceRangeV2 {
+          minVariantPrice {
+            amount
+            currencyCode
+          }
+          maxVariantPrice {
+            amount
+            currencyCode
+          }
+        }
+        metafields(first: 100) {
+          edges {
+            node {
+              namespace
+              key
+              value
+              type
+              description
+            }
+          }
+        }
+        variants(first: 250) {
+          edges {
+            node {
+              id
+              legacyResourceId
+              title
+              displayName
+              sku
+              barcode
+              position
+              price
+              compareAtPrice
+              taxable
+              taxCode
+              availableForSale
+              inventoryQuantity
+              selectedOptions {
+                name
+                value
+              }
+              image {
+                id
+                url
+              }
+              inventoryItem {
+                id
+                tracked
+                sku
+                requiresShipping
+              }
+              metafields(first: 50) {
+                edges {
+                  node {
+                    namespace
+                    key
+                    value
+                    type
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`;
+
+/**
+ * Collection bulk query for exporting all collections with products and metafields
+ * Used for collection backups via GraphQL bulk operations
+ */
+export const COLLECTION_BULK_QUERY = `
+{
+  collections {
+    edges {
+      node {
+        id
+        legacyResourceId
+        title
+        handle
+        descriptionHtml
+        sortOrder
+        templateSuffix
+        updatedAt
+        image {
+          url
+          altText
+          width
+          height
+        }
+        seo {
+          title
+          description
+        }
+        ruleSet {
+          appliedDisjunctively
+          rules {
+            column
+            relation
+            condition
+          }
+        }
+        metafields(first: 100) {
+          edges {
+            node {
+              namespace
+              key
+              value
+              type
+              description
+            }
+          }
+        }
+        products(first: 250) {
+          edges {
+            node {
+              id
+              legacyResourceId
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`;
+
+/**
  * Submit a bulk operation query to Shopify
  *
  * @param client - GraphQL client with request method
