@@ -90,3 +90,13 @@ export async function withRetry<T>(
     `Failed after retries: ${lastError?.message ?? 'unknown error'}`,
   );
 }
+
+// Re-export GraphQL client alongside REST client
+export {
+  createGraphQLClient,
+  executeQuery,
+  executeMutation,
+  GraphQLQueryError,
+  UserErrorsError,
+} from './graphql/client.js';
+export type { GraphQLClient, MutationOptions } from './graphql/client.js';

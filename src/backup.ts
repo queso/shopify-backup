@@ -2,8 +2,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { BackupConfig, BackupStatus } from './types.js';
 import { createShopifyClient } from './shopify.js';
+import { createGraphQLClient } from './graphql/client.js';
 import { backupProducts } from './backup/products.js';
-import { backupCustomers } from './backup/customers.js';
+import { backupCustomersBulk } from './backup/customers-bulk.js';
 import { backupOrders } from './backup/orders.js';
 import { backupContent } from './backup/content.js';
 import { downloadProductImages } from './images.js';
@@ -17,6 +18,7 @@ export async function runBackup(config: BackupConfig): Promise<BackupStatus> {
   fs.mkdirSync(outputDir, { recursive: true });
 
   const client = createShopifyClient(config);
+  const graphqlClient = createGraphQLClient(config);
 
   const status: BackupStatus = {
     started_at: startedAt,
@@ -46,9 +48,9 @@ export async function runBackup(config: BackupConfig): Promise<BackupStatus> {
     status.errors.push(`Products backup failed: ${error.message}`);
   }
 
-  // Customers
+  // Customers (using GraphQL bulk operations)
   try {
-    const result = await backupCustomers(client, outputDir);
+    const result = await backupCustomersBulk(graphqlClient, outputDir);
     status.modules['customers'] = result.success ? 'success' : 'failed';
     status.counts['customers'] = result.count;
     if (!result.success && result.error) {

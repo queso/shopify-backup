@@ -9,7 +9,8 @@ Shopify backup script that dumps store data nightly to a directory picked up by 
 ## Tech Stack
 
 - Node.js + TypeScript
-- @shopify/shopify-api for Shopify API client
+- @shopify/shopify-api for Shopify REST and GraphQL clients
+- GraphQL Bulk Operations for efficient large-scale data export
 - Deployed via Dokploy with cron schedule (`0 2 * * *`)
 
 ## Environment Variables
@@ -38,6 +39,34 @@ Output structure:
 └── images/{product_id}/{n}.{ext}
 ```
 
+## GraphQL Bulk Operations
+
+The `src/graphql/` module provides efficient bulk data export using Shopify's GraphQL Bulk Operations API:
+
+```
+src/graphql/
+├── client.ts          # GraphQL client wrapper with error handling
+├── bulk-operations.ts # Bulk operation submission (CUSTOMER_BULK_QUERY)
+├── polling.ts         # Async polling with timeout/abort support
+├── download.ts        # JSONL result file download
+└── jsonl.ts           # JSONL parsing and nested object reconstruction
+```
+
+### Usage Pattern
+```typescript
+import { createGraphQLClient } from './graphql/client.js';
+import { backupCustomersBulk } from './backup/customers-bulk.js';
+
+const client = createGraphQLClient(config);
+const result = await backupCustomersBulk(client, outputDir);
+// result: { success: boolean, count: number, error?: string }
+```
+
+### Why Bulk Operations?
+- **Async processing** - Shopify processes queries in background, no rate limits during execution
+- **Large datasets** - Handles 10,000+ records efficiently
+- **JSONL format** - Streaming-friendly output, parsed with `parseJsonl()`
+
 ## Shopify API Rate Limits
 
 - 40 requests/second (leaky bucket)
@@ -47,13 +76,13 @@ Output structure:
 
 ## Data to Backup
 
-- Products (all fields, variants, metafields)
-- Product images (actual files downloaded, not just URLs)
-- Customers
-- Orders
-- Pages
-- Collections
-- Blogs/articles
+- Products (all fields, variants, metafields) - REST API
+- Product images (actual files downloaded, not just URLs) - REST API
+- **Customers** - GraphQL Bulk Operations (faster for large stores)
+- Orders - REST API
+- Pages - REST API
+- Collections - REST API
+- Blogs/articles - REST API
 
 ## A(i)-Team Integration
 

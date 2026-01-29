@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-01-29
+
+### Added
+
+#### GraphQL Bulk Operations for Customers
+- **GraphQL client wrapper** - New `src/graphql/client.ts` with typed interface for Shopify GraphQL API
+  - `createGraphQLClient()` - Creates authenticated GraphQL client
+  - `executeQuery()` / `executeMutation()` - Typed query/mutation execution
+  - `GraphQLQueryError` / `UserErrorsError` - Structured error handling
+- **Bulk operation submission** - `submitBulkOperation()` in `src/graphql/bulk-operations.ts`
+  - Executes `bulkOperationRunQuery` mutation
+  - Returns operation ID for polling
+  - Includes `CUSTOMER_BULK_QUERY` with comprehensive customer fields
+- **Bulk operation polling** - `pollBulkOperation()` in `src/graphql/polling.ts`
+  - Configurable poll interval (default: 1 second)
+  - Configurable timeout (default: 10 minutes)
+  - AbortSignal support for cancellation
+  - Debug-level logging for polling progress
+  - Rate limiting coordination with global rate limiter
+- **JSONL parsing** - `src/graphql/jsonl.ts` utilities
+  - `parseJsonl()` - Parses Shopify bulk operation JSONL output
+  - `reconstructNestedObjects()` - Rebuilds parent-child relationships from flat JSONL
+- **JSONL download** - `downloadBulkOperationResults()` in `src/graphql/download.ts`
+  - Fetches and parses bulk operation result files
+  - Typed generic interface for result objects
+- **Customer bulk backup** - `backupCustomersBulk()` in `src/backup/customers-bulk.ts`
+  - Orchestrates full bulk operation flow: submit → poll → download → write
+  - Returns `BackupResult` with success status and count
+  - Graceful error handling with detailed error messages
+
+#### Type System Enhancements
+- New GraphQL types in `src/types/graphql.ts`:
+  - `BulkOperation`, `BulkOperationStatus`, `BulkOperationErrorCode`
+  - `GraphQLClient`, `GraphQLResponse`, `GraphQLError`
+  - `CustomerNode`, `BulkCustomerNode` for typed customer data
+  - `UserError` for Shopify mutation errors
+
+### Changed
+- **Customer backup now uses GraphQL bulk operations** instead of REST API pagination
+  - Significantly faster for large customer lists (3,304 customers in ~30 seconds vs minutes)
+  - Better rate limit handling (bulk operations are async)
+  - Graceful degradation - backup continues if customer backup fails
+- Updated `src/backup.ts` to use `backupCustomersBulk()` with GraphQL client
+- Re-exported GraphQL client from `src/shopify.ts` for unified API access
+
+### Fixed
+- TypeScript enum usage in test files (use `BulkOperationStatus.CREATED` instead of string literals)
+- Generic type parameters for `executeMutation()` calls in tests
+- Added `BulkCustomerNode` type for proper typing of bulk customer data
+
+### Technical Details
+- 129 new unit tests for GraphQL modules
+- All tests pass (224 total)
+- Docker build succeeds
+- Tested against live Shopify store: 3,304 customers, 6,404 orders backed up successfully
+
 ## [0.1.0] - 2026-01-28
 
 Initial release of the Shopify backup utility.

@@ -1,0 +1,449 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { pollBulkOperation, BulkOperationError } from '../polling.js';
+import type { GraphQLResponse, CurrentBulkOperationResponse, BulkOperationStatus, BulkOperationErrorCode } from '../../types/graphql.js';
+
+// Mock the rateLimit function to avoid real delays in tests
+vi.mock('../../shopify.js', () => ({
+  rateLimit: vi.fn().mockResolvedValue(undefined),
+}));
+
+describe('pollBulkOperation', () => {
+  let mockClient: {
+    request: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(() => {
+    mockClient = {
+      request: vi.fn(),
+    };
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Helper to create a bulk operation response with the given status
+   */
+  function createOperationResponse(
+    id: string,
+    status: BulkOperationStatus,
+    options?: {
+      url?: string | null;
+      errorCode?: BulkOperationErrorCode | null;
+      objectCount?: string;
+    }
+  ): GraphQLResponse<CurrentBulkOperationResponse> {
+    return {
+      data: {
+        currentBulkOperation: {
+          id,
+          status,
+          errorCode: options?.errorCode ?? null,
+          objectCount: options?.objectCount ?? '0',
+          url: options?.url ?? null,
+          createdAt: '2024-01-15T10:00:00Z',
+          completedAt: status === 'COMPLETED' ? '2024-01-15T10:05:00Z' : null,
+          fileSize: options?.url ? '1024' : null,
+          query: '{ customers { edges { node { id } } } }',
+          rootObjectCount: options?.objectCount ?? '0',
+        },
+      },
+    };
+  }
+
+  describe('successful polling', () => {
+    it('should poll until COMPLETED and return operation with URL', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+      const resultUrl = 'https://storage.shopifycloud.com/results.jsonl';
+
+      // First call: RUNNING, second call: COMPLETED
+      mockClient.request
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(
+          createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl, objectCount: '150' })
+        );
+
+      const pollPromise = pollBulkOperation(mockClient as any, operationId);
+
+      // Advance past first poll interval
+      await vi.advanceTimersByTimeAsync(1000);
+
+      const result = await pollPromise;
+
+      expect(result.status).toBe('COMPLETED');
+      expect(result.url).toBe(resultUrl);
+      expect(result.objectCount).toBe('150');
+      expect(mockClient.request).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return immediately if already COMPLETED on first poll', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+      const resultUrl = 'https://storage.shopifycloud.com/results.jsonl';
+
+      mockClient.request.mockResolvedValueOnce(
+        createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl })
+      );
+
+      const result = await pollBulkOperation(mockClient as any, operationId);
+
+      expect(result.status).toBe('COMPLETED');
+      expect(result.url).toBe(resultUrl);
+      expect(mockClient.request).toHaveBeenCalledTimes(1);
+    });
+
+    it('should poll through multiple RUNNING states', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+      const resultUrl = 'https://storage.shopifycloud.com/results.jsonl';
+
+      // Multiple RUNNING states before COMPLETED
+      mockClient.request
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'CREATED' as BulkOperationStatus))
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus, { objectCount: '50' }))
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus, { objectCount: '100' }))
+        .mockResolvedValueOnce(
+          createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl, objectCount: '150' })
+        );
+
+      const pollPromise = pollBulkOperation(mockClient as any, operationId);
+
+      // Advance through poll intervals
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      const result = await pollPromise;
+
+      expect(result.status).toBe('COMPLETED');
+      expect(mockClient.request).toHaveBeenCalledTimes(4);
+    });
+  });
+
+  describe('error handling', () => {
+    it('should throw BulkOperationError on FAILED status with error code', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      mockClient.request.mockResolvedValueOnce(
+        createOperationResponse(operationId, 'FAILED' as BulkOperationStatus, {
+          errorCode: 'TIMEOUT' as BulkOperationErrorCode,
+        })
+      );
+
+      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(BulkOperationError);
+    });
+
+    it('should include error code in BulkOperationError message', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      mockClient.request.mockResolvedValueOnce(
+        createOperationResponse(operationId, 'FAILED' as BulkOperationStatus, {
+          errorCode: 'ACCESS_DENIED' as BulkOperationErrorCode,
+        })
+      );
+
+      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(/ACCESS_DENIED/);
+    });
+
+    it('should throw BulkOperationError on CANCELED status', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      mockClient.request.mockResolvedValueOnce(
+        createOperationResponse(operationId, 'CANCELED' as BulkOperationStatus)
+      );
+
+      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(BulkOperationError);
+    });
+
+    it('should include CANCELED in error message', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      mockClient.request.mockResolvedValueOnce(
+        createOperationResponse(operationId, 'CANCELED' as BulkOperationStatus)
+      );
+
+      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(/CANCEL/i);
+    });
+
+    it('should throw if operation becomes FAILED after RUNNING', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      mockClient.request
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(
+          createOperationResponse(operationId, 'FAILED' as BulkOperationStatus, {
+            errorCode: 'INTERNAL_SERVER_ERROR' as BulkOperationErrorCode,
+          })
+        );
+
+      let caughtError: unknown;
+      const pollPromise = pollBulkOperation(mockClient as any, operationId).catch((e) => {
+        caughtError = e;
+      });
+
+      await vi.advanceTimersByTimeAsync(1000);
+      await pollPromise;
+
+      expect(caughtError).toBeInstanceOf(BulkOperationError);
+    });
+  });
+
+  describe('timeout', () => {
+    it('should timeout after configured duration', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      // Always return RUNNING
+      mockClient.request.mockResolvedValue(
+        createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus)
+      );
+
+      // Use a short timeout for testing (5 seconds)
+      let caughtError: unknown;
+      const pollPromise = pollBulkOperation(mockClient as any, operationId, {
+        timeoutMs: 5000,
+        pollIntervalMs: 1000,
+      }).catch((e) => {
+        caughtError = e;
+      });
+
+      // Advance past the timeout
+      await vi.advanceTimersByTimeAsync(6000);
+      await pollPromise;
+
+      expect((caughtError as Error).message).toMatch(/timeout/i);
+    });
+
+    it('should use default timeout of 10 minutes', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      // Always return RUNNING
+      mockClient.request.mockResolvedValue(
+        createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus)
+      );
+
+      let caughtError: unknown;
+      const pollPromise = pollBulkOperation(mockClient as any, operationId).catch((e) => {
+        caughtError = e;
+      });
+
+      // Advance just under 10 minutes - should still be polling
+      await vi.advanceTimersByTimeAsync(9 * 60 * 1000);
+
+      // Verify we haven't rejected yet (operation is still running)
+      expect(mockClient.request).toHaveBeenCalled();
+      expect(caughtError).toBeUndefined();
+
+      // Advance past 10 minutes
+      await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
+      await pollPromise;
+
+      expect((caughtError as Error).message).toMatch(/timeout/i);
+    });
+  });
+
+  describe('AbortSignal cancellation', () => {
+    it('should respect AbortSignal cancellation', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+      const abortController = new AbortController();
+
+      // Always return RUNNING
+      mockClient.request.mockResolvedValue(
+        createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus)
+      );
+
+      let caughtError: unknown;
+      const pollPromise = pollBulkOperation(mockClient as any, operationId, {
+        signal: abortController.signal,
+      }).catch((e) => {
+        caughtError = e;
+      });
+
+      // Let first poll complete
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Abort the operation
+      abortController.abort();
+
+      // Advance timers to let the abort be processed
+      await vi.advanceTimersByTimeAsync(1000);
+      await pollPromise;
+
+      expect((caughtError as Error).message).toMatch(/abort/i);
+    });
+
+    it('should not start polling if already aborted', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+      const abortController = new AbortController();
+      abortController.abort(); // Pre-abort
+
+      await expect(
+        pollBulkOperation(mockClient as any, operationId, {
+          signal: abortController.signal,
+        })
+      ).rejects.toThrow(/abort/i);
+
+      expect(mockClient.request).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('configurable poll interval', () => {
+    it('should use default poll interval of 1 second', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+      const resultUrl = 'https://storage.shopifycloud.com/results.jsonl';
+
+      mockClient.request
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(
+          createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl })
+        );
+
+      const pollPromise = pollBulkOperation(mockClient as any, operationId);
+
+      // After 500ms, should only have one request
+      await vi.advanceTimersByTimeAsync(500);
+      expect(mockClient.request).toHaveBeenCalledTimes(1);
+
+      // After 1000ms total, should have second request
+      await vi.advanceTimersByTimeAsync(500);
+
+      await pollPromise;
+
+      expect(mockClient.request).toHaveBeenCalledTimes(2);
+    });
+
+    it('should use custom poll interval when configured', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+      const resultUrl = 'https://storage.shopifycloud.com/results.jsonl';
+
+      mockClient.request
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(
+          createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl })
+        );
+
+      const pollPromise = pollBulkOperation(mockClient as any, operationId, {
+        pollIntervalMs: 2000,
+      });
+
+      // After 1000ms, should only have initial request
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(mockClient.request).toHaveBeenCalledTimes(1);
+
+      // After 2000ms total, should have second request
+      await vi.advanceTimersByTimeAsync(1000);
+
+      await pollPromise;
+
+      expect(mockClient.request).toHaveBeenCalledTimes(2);
+    });
+
+    it('should use faster poll interval for quick operations', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+      const resultUrl = 'https://storage.shopifycloud.com/results.jsonl';
+
+      mockClient.request
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(
+          createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl })
+        );
+
+      const pollPromise = pollBulkOperation(mockClient as any, operationId, {
+        pollIntervalMs: 100, // Fast polling
+      });
+
+      // After 200ms, should have 3 requests
+      await vi.advanceTimersByTimeAsync(200);
+
+      await pollPromise;
+
+      expect(mockClient.request).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should throw if currentBulkOperation returns null', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      const nullResponse: GraphQLResponse<CurrentBulkOperationResponse> = {
+        data: {
+          currentBulkOperation: null,
+        },
+      };
+
+      mockClient.request.mockResolvedValueOnce(nullResponse);
+
+      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow();
+    });
+
+    it('should handle network errors during polling', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      mockClient.request.mockRejectedValue(new Error('Network error'));
+
+      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(/Network error/);
+    });
+
+    it('should handle CANCELING status and continue polling', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      mockClient.request
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'CANCELING' as BulkOperationStatus))
+        .mockResolvedValueOnce(createOperationResponse(operationId, 'CANCELED' as BulkOperationStatus));
+
+      let caughtError: unknown;
+      const pollPromise = pollBulkOperation(mockClient as any, operationId).catch((e) => {
+        caughtError = e;
+      });
+
+      await vi.advanceTimersByTimeAsync(1000);
+      await pollPromise;
+
+      expect((caughtError as Error).message).toMatch(/CANCEL/i);
+      expect(mockClient.request).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle EXPIRED status', async () => {
+      const operationId = 'gid://shopify/BulkOperation/123456789';
+
+      mockClient.request.mockResolvedValueOnce(
+        createOperationResponse(operationId, 'EXPIRED' as BulkOperationStatus)
+      );
+
+      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(BulkOperationError);
+    });
+  });
+});
+
+describe('BulkOperationError', () => {
+  it('should be an instance of Error', () => {
+    const error = new BulkOperationError('FAILED', 'TIMEOUT' as any, 'Operation failed');
+    expect(error).toBeInstanceOf(Error);
+  });
+
+  it('should have status and errorCode properties', () => {
+    const error = new BulkOperationError('FAILED', 'ACCESS_DENIED' as any, 'Access denied');
+    expect(error.status).toBe('FAILED');
+    expect(error.errorCode).toBe('ACCESS_DENIED');
+  });
+
+  it('should format message with status and error code', () => {
+    const error = new BulkOperationError('FAILED', 'TIMEOUT' as any, 'Operation timed out');
+    expect(error.message).toContain('FAILED');
+    expect(error.message).toContain('TIMEOUT');
+  });
+
+  it('should handle null error code', () => {
+    const error = new BulkOperationError('CANCELED', null, 'Operation was canceled');
+    expect(error.status).toBe('CANCELED');
+    expect(error.errorCode).toBeNull();
+  });
+
+  it('should work without a custom message', () => {
+    const error = new BulkOperationError('FAILED', 'INTERNAL_SERVER_ERROR' as any);
+    expect(error.message).toContain('FAILED');
+    expect(error.message).toContain('INTERNAL_SERVER_ERROR');
+  });
+});

@@ -5,16 +5,17 @@ import * as os from 'node:os';
 import type { BackupConfig, BackupResult, BackupStatus, ContentBackupResult, ImageDownloadResult, CleanupResult } from '../types.js';
 
 vi.mock('../backup/products.js', () => ({ backupProducts: vi.fn() }));
-vi.mock('../backup/customers.js', () => ({ backupCustomers: vi.fn() }));
+vi.mock('../backup/customers-bulk.js', () => ({ backupCustomersBulk: vi.fn() }));
 vi.mock('../backup/orders.js', () => ({ backupOrders: vi.fn() }));
 vi.mock('../backup/content.js', () => ({ backupContent: vi.fn() }));
 vi.mock('../images.js', () => ({ downloadProductImages: vi.fn() }));
 vi.mock('../cleanup.js', () => ({ cleanupOldBackups: vi.fn() }));
 vi.mock('../shopify.js', () => ({ createShopifyClient: vi.fn().mockReturnValue({}) }));
+vi.mock('../graphql/client.js', () => ({ createGraphQLClient: vi.fn().mockReturnValue({}) }));
 
 import { runBackup } from '../backup.js';
 import { backupProducts } from '../backup/products.js';
-import { backupCustomers } from '../backup/customers.js';
+import { backupCustomersBulk } from '../backup/customers-bulk.js';
 import { backupOrders } from '../backup/orders.js';
 import { backupContent } from '../backup/content.js';
 import { downloadProductImages } from '../images.js';
@@ -36,7 +37,7 @@ function successResult(count: number): BackupResult {
 function setupAllMocksSuccess(): void {
   const productsData = [{ id: 1, title: 'Test Product' }];
   vi.mocked(backupProducts).mockResolvedValue({ result: successResult(10), products: productsData } as any);
-  vi.mocked(backupCustomers).mockResolvedValue(successResult(5));
+  vi.mocked(backupCustomersBulk).mockResolvedValue(successResult(5));
   vi.mocked(backupOrders).mockResolvedValue(successResult(8));
   vi.mocked(backupContent).mockResolvedValue({
     pages: successResult(3),
@@ -86,7 +87,7 @@ describe('runBackup', () => {
     await runBackup(config);
 
     expect(backupProducts).toHaveBeenCalled();
-    expect(backupCustomers).toHaveBeenCalled();
+    expect(backupCustomersBulk).toHaveBeenCalled();
     expect(backupOrders).toHaveBeenCalled();
     expect(backupContent).toHaveBeenCalled();
     expect(downloadProductImages).toHaveBeenCalled();
@@ -125,7 +126,7 @@ describe('runBackup', () => {
   });
 
   it('should continue on partial failure and include errors', async () => {
-    vi.mocked(backupCustomers).mockRejectedValue(new Error('API rate limit'));
+    vi.mocked(backupCustomersBulk).mockRejectedValue(new Error('API rate limit'));
     const config = makeConfig(tempDir);
 
     const result = await runBackup(config);
