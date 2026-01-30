@@ -5,6 +5,7 @@ import os from 'node:os';
 import type { BackupResult } from '../../types.js';
 import type { BulkOperation } from '../../types/graphql.js';
 import { BulkOperationStatus, BulkOperationErrorCode } from '../../types/graphql.js';
+import type { GraphQLClient } from '../../graphql/client.js';
 
 // Mock the bulk operation dependencies
 vi.mock('../../graphql/bulk-operations.js', () => ({
@@ -40,9 +41,7 @@ import { backupOrdersBulk } from '../orders-bulk.js';
 
 describe('backupOrdersBulk', () => {
   let tmpDir: string;
-  let mockClient: {
-    request: ReturnType<typeof vi.fn>;
-  };
+  let mockClient: Pick<GraphQLClient, 'request'>;
 
   /**
    * Helper to create a mock completed bulk operation
@@ -68,7 +67,7 @@ describe('backupOrdersBulk', () => {
   /**
    * Helper to create a mock order (parent object - no __parentId)
    */
-  function createMockOrder(id: string) {
+  function createMockOrder(id: string): Record<string, unknown> {
     return {
       id: `gid://shopify/Order/${id}`,
       legacyResourceId: id,
@@ -150,7 +149,7 @@ describe('backupOrdersBulk', () => {
         ...createFlatOrderData('2'),
       ]);
 
-      const result = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result = await backupOrdersBulk(mockClient, tmpDir);
 
       // Verify success
       expect(result.success).toBe(true);
@@ -170,7 +169,7 @@ describe('backupOrdersBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      await backupOrdersBulk(mockClient as any, tmpDir);
+      await backupOrdersBulk(mockClient, tmpDir);
 
       expect(submitBulkOperation).toHaveBeenCalledTimes(1);
       expect(submitBulkOperation).toHaveBeenCalledWith(
@@ -186,7 +185,7 @@ describe('backupOrdersBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      await backupOrdersBulk(mockClient as any, tmpDir);
+      await backupOrdersBulk(mockClient, tmpDir);
 
       expect(pollBulkOperation).toHaveBeenCalledTimes(1);
       expect(pollBulkOperation).toHaveBeenCalledWith(
@@ -205,7 +204,7 @@ describe('backupOrdersBulk', () => {
       );
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      await backupOrdersBulk(mockClient as any, tmpDir);
+      await backupOrdersBulk(mockClient, tmpDir);
 
       expect(downloadBulkOperationResults).toHaveBeenCalledWith(resultUrl);
     });
@@ -222,7 +221,7 @@ describe('backupOrdersBulk', () => {
       vi.mocked(submitBulkOperation).mockResolvedValue('gid://shopify/BulkOperation/123');
       vi.mocked(pollBulkOperation).mockResolvedValue(operationWithNoUrl);
 
-      const result = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
       expect(result.count).toBe(0);
@@ -240,7 +239,7 @@ describe('backupOrdersBulk', () => {
       );
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      const result = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
       expect(result.count).toBe(0);
@@ -257,7 +256,7 @@ describe('backupOrdersBulk', () => {
         new Error('A bulk operation is already in progress')
       );
 
-      const result = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.count).toBe(0);
@@ -270,7 +269,7 @@ describe('backupOrdersBulk', () => {
         new BulkOperationError(BulkOperationStatus.FAILED, BulkOperationErrorCode.TIMEOUT, 'Operation timed out')
       );
 
-      const result = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.count).toBe(0);
@@ -284,7 +283,7 @@ describe('backupOrdersBulk', () => {
         new Error('Failed to download bulk operation results: 404 Not Found')
       );
 
-      const result = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/download|404/i);
@@ -296,7 +295,7 @@ describe('backupOrdersBulk', () => {
         new BulkOperationError(BulkOperationStatus.CANCELED, null, 'Operation was canceled')
       );
 
-      const result = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/cancel/i);
@@ -317,7 +316,7 @@ describe('backupOrdersBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const result = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
 
@@ -342,7 +341,7 @@ describe('backupOrdersBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const result = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
 
@@ -366,7 +365,7 @@ describe('backupOrdersBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const result = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
 
@@ -385,7 +384,7 @@ describe('backupOrdersBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(createFlatOrderData('1'));
 
-      await backupOrdersBulk(mockClient as any, tmpDir);
+      await backupOrdersBulk(mockClient, tmpDir);
 
       const filePath = path.join(tmpDir, 'orders.json');
 
@@ -407,7 +406,7 @@ describe('backupOrdersBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(createFlatOrderData('42'));
 
-      await backupOrdersBulk(mockClient as any, tmpDir);
+      await backupOrdersBulk(mockClient, tmpDir);
 
       const expectedPath = path.join(tmpDir, 'orders.json');
       const content = await fs.readFile(expectedPath, 'utf-8');
@@ -429,7 +428,7 @@ describe('backupOrdersBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      await backupOrdersBulk(mockClient as any, tmpDir);
+      await backupOrdersBulk(mockClient, tmpDir);
 
       const content = await fs.readFile(path.join(tmpDir, 'orders.json'), 'utf-8');
       const orders = JSON.parse(content);
@@ -463,7 +462,7 @@ describe('backupOrdersBulk', () => {
         ...createFlatOrderData('3'),
       ]);
 
-      const result: BackupResult = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result: BackupResult = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result).toEqual({
         success: true,
@@ -476,7 +475,7 @@ describe('backupOrdersBulk', () => {
 
       vi.mocked(submitBulkOperation).mockRejectedValue(new Error(errorMessage));
 
-      const result: BackupResult = await backupOrdersBulk(mockClient as any, tmpDir);
+      const result: BackupResult = await backupOrdersBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.count).toBe(0);

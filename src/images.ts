@@ -4,6 +4,18 @@ import type { ImageDownloadResult } from './types.js';
 
 const MAX_RETRIES = 3;
 
+/**
+ * Product with images - supports both REST and GraphQL formats
+ */
+interface ProductWithImages {
+  id: number | string;
+  images?: Array<{
+    src?: string;  // REST format
+    url?: string;  // GraphQL format
+    position: number;
+  }> | null;
+}
+
 function getExtension(url: string): string {
   const pathname = new URL(url).pathname;
   const ext = path.extname(pathname);
@@ -11,7 +23,7 @@ function getExtension(url: string): string {
 }
 
 export async function downloadProductImages(
-  products: any[],
+  products: ProductWithImages[],
   outputDir: string,
 ): Promise<ImageDownloadResult> {
   const result: ImageDownloadResult = {
@@ -52,9 +64,10 @@ export async function downloadProductImages(
           fs.writeFileSync(filePath, buffer);
           result.downloaded++;
           break;
-        } catch (error: any) {
+        } catch (error: unknown) {
           if (attempt === MAX_RETRIES - 1) {
-            console.warn(`Failed to download ${imageUrl} after ${MAX_RETRIES} attempts: ${error.message}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.warn(`Failed to download ${imageUrl} after ${MAX_RETRIES} attempts: ${errorMessage}`);
             result.failed++;
             result.failedUrls.push(imageUrl);
           }

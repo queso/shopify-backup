@@ -19,6 +19,7 @@ import type {
   ImageDownloadResult,
   CleanupResult,
 } from '../../types.js';
+import type { BulkProductNode } from '../../types/graphql.js';
 
 // Mock all backup modules
 vi.mock('../products.js', () => ({ backupProducts: vi.fn() }));
@@ -31,7 +32,7 @@ vi.mock('../../images.js', () => ({ downloadProductImages: vi.fn() }));
 vi.mock('../../cleanup.js', () => ({ cleanupOldBackups: vi.fn() }));
 vi.mock('../../shopify.js', () => ({
   createShopifyClient: vi.fn().mockReturnValue({}),
-  withRetry: vi.fn((fn: () => Promise<any>) => fn()),
+  withRetry: vi.fn(<T>(fn: () => Promise<T>) => fn()),
 }));
 vi.mock('../../graphql/client.js', () => ({
   createGraphQLClient: vi.fn().mockReturnValue({ request: vi.fn() }),
@@ -64,12 +65,18 @@ function failedResult(error: string): BackupResult {
   return { success: false, count: 0, error };
 }
 
+interface MockProduct {
+  id: string;
+  title: string;
+  images: unknown[];
+}
+
 function setupAllMocksSuccess(): void {
-  const productsData = [{ id: 'gid://shopify/Product/1', title: 'Test Product', images: [] }];
+  const productsData: MockProduct[] = [{ id: 'gid://shopify/Product/1', title: 'Test Product', images: [] }];
   vi.mocked(backupProductsBulk).mockResolvedValue({
     result: successResult(10),
-    products: productsData,
-  } as any);
+    products: productsData as unknown as BulkProductNode[],
+  });
   vi.mocked(backupCustomersBulk).mockResolvedValue(successResult(5));
   vi.mocked(backupOrdersBulk).mockResolvedValue(successResult(8));
   vi.mocked(backupCollectionsBulk).mockResolvedValue(successResult(2));
@@ -151,7 +158,7 @@ describe('runBackup - Customer Bulk Backup Integration', () => {
       // Should have error recorded
       expect(result.errors.length).toBeGreaterThan(0);
       expect(
-        result.errors.some((e: string) => e.toLowerCase().includes('customer'))
+        result.errors.some((e) => e.toLowerCase().includes('customer'))
       ).toBe(true);
     });
 
@@ -200,7 +207,7 @@ describe('runBackup - Customer Bulk Backup Integration', () => {
 
       expect(status.modules['customers']).toBe('failed');
       expect(
-        status.errors.some((e: string) => e.includes('Customers backup failed'))
+        status.errors.some((e) => e.includes('Customers backup failed'))
       ).toBe(true);
     });
   });

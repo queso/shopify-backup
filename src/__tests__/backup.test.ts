@@ -3,6 +3,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { BackupConfig, BackupResult, BackupStatus, ContentBackupResult, ImageDownloadResult, CleanupResult } from '../types.js';
+import type { BulkProductNode } from '../types/graphql.js';
+import type { GraphQLClient } from '../graphql/client.js';
+import type { ProductsBulkResult } from '../backup/products-bulk.js';
 
 vi.mock('../backup/products.js', () => ({ backupProducts: vi.fn() }));
 vi.mock('../backup/products-bulk.js', () => ({ backupProductsBulk: vi.fn() }));
@@ -41,9 +44,43 @@ function successResult(count: number): BackupResult {
   return { success: true, count };
 }
 
+function createMockProduct(id: string = '1', title: string = 'Test Product'): BulkProductNode {
+  return {
+    id: `gid://shopify/Product/${id}`,
+    legacyResourceId: id,
+    title,
+    handle: title.toLowerCase().replace(/\s+/g, '-'),
+    descriptionHtml: '<p>Test description</p>',
+    vendor: 'Test Vendor',
+    productType: 'Test Type',
+    status: 'ACTIVE' as const,
+    tags: [],
+    createdAt: '2024-01-15T10:00:00Z',
+    updatedAt: '2024-01-15T10:00:00Z',
+    publishedAt: '2024-01-15T10:00:00Z',
+    templateSuffix: null,
+    giftCardTemplateSuffix: null,
+    hasOnlyDefaultVariant: true,
+    hasOutOfStockVariants: false,
+    tracksInventory: false,
+    totalInventory: 0,
+    totalVariants: 1,
+    options: [],
+    images: [],
+    featuredImage: null,
+    seo: { title: null, description: null },
+    priceRangeV2: {
+      minVariantPrice: { amount: '0.00', currencyCode: 'USD' },
+      maxVariantPrice: { amount: '0.00', currencyCode: 'USD' }
+    },
+    metafields: [],
+    variants: []
+  };
+}
+
 function setupAllMocksSuccess(): void {
-  const productsData = [{ id: 'gid://shopify/Product/1', title: 'Test Product', images: [] }];
-  vi.mocked(backupProductsBulk).mockResolvedValue({ result: successResult(10), products: productsData } as any);
+  const productsData: BulkProductNode[] = [createMockProduct()];
+  vi.mocked(backupProductsBulk).mockResolvedValue({ result: successResult(10), products: productsData } as ProductsBulkResult);
   vi.mocked(backupCustomersBulk).mockResolvedValue(successResult(5));
   vi.mocked(backupOrdersBulk).mockResolvedValue(successResult(8));
   vi.mocked(backupCollectionsBulk).mockResolvedValue(successResult(2));
@@ -193,8 +230,8 @@ describe('runBackup', () => {
     });
 
     it('should pass GraphQL client to backupOrdersBulk', async () => {
-      const mockGraphQLClient = { request: vi.fn() };
-      vi.mocked(createGraphQLClient).mockReturnValue(mockGraphQLClient as any);
+      const mockGraphQLClient: Pick<GraphQLClient, 'request'> = { request: vi.fn() };
+      vi.mocked(createGraphQLClient).mockReturnValue(mockGraphQLClient as GraphQLClient);
       vi.mocked(backupOrdersBulk).mockResolvedValue(successResult(5));
       const config = makeConfig(tempDir);
 
@@ -202,7 +239,8 @@ describe('runBackup', () => {
 
       expect(backupOrdersBulk).toHaveBeenCalledWith(
         mockGraphQLClient,
-        expect.stringContaining(tempDir)
+        expect.stringContaining(tempDir),
+        expect.objectContaining({ rest: expect.anything() })
       );
     });
 
@@ -264,8 +302,8 @@ describe('runBackup', () => {
     });
 
     it('should pass GraphQL client to backupCollectionsBulk', async () => {
-      const mockGraphQLClient = { request: vi.fn() };
-      vi.mocked(createGraphQLClient).mockReturnValue(mockGraphQLClient as any);
+      const mockGraphQLClient: Pick<GraphQLClient, 'request'> = { request: vi.fn() };
+      vi.mocked(createGraphQLClient).mockReturnValue(mockGraphQLClient as GraphQLClient);
       vi.mocked(backupCollectionsBulk).mockResolvedValue(successResult(5));
       const config = makeConfig(tempDir);
 
@@ -329,7 +367,7 @@ describe('runBackup', () => {
   // WI-032: Bulk Products Integration Tests
   describe('bulk products integration', () => {
     it('should call backupProductsBulk instead of REST backupProducts', async () => {
-      const productsData = [{ id: 'gid://shopify/Product/1', title: 'Test', images: [] }] as any;
+      const productsData: BulkProductNode[] = [createMockProduct('1', 'Test')];
       vi.mocked(backupProductsBulk).mockResolvedValue({ result: successResult(10), products: productsData });
       const config = makeConfig(tempDir);
 
@@ -340,9 +378,9 @@ describe('runBackup', () => {
     });
 
     it('should pass GraphQL client to backupProductsBulk', async () => {
-      const mockGraphQLClient = { request: vi.fn() };
-      vi.mocked(createGraphQLClient).mockReturnValue(mockGraphQLClient as any);
-      const productsData = [{ id: 'gid://shopify/Product/1', title: 'Test', images: [] }] as any;
+      const mockGraphQLClient: Pick<GraphQLClient, 'request'> = { request: vi.fn() };
+      vi.mocked(createGraphQLClient).mockReturnValue(mockGraphQLClient as GraphQLClient);
+      const productsData: BulkProductNode[] = [createMockProduct('1', 'Test')];
       vi.mocked(backupProductsBulk).mockResolvedValue({ result: successResult(5), products: productsData });
       const config = makeConfig(tempDir);
 
@@ -355,10 +393,10 @@ describe('runBackup', () => {
     });
 
     it('should pass products array from bulk result to downloadProductImages', async () => {
-      const productsData = [
-        { id: 'gid://shopify/Product/1', title: 'Product 1', images: [{ url: 'http://example.com/1.jpg' }] },
-        { id: 'gid://shopify/Product/2', title: 'Product 2', images: [{ url: 'http://example.com/2.jpg' }] },
-      ] as any;
+      const productsData: BulkProductNode[] = [
+        { ...createMockProduct('1', 'Product 1'), images: [{ id: 'gid://shopify/ProductImage/1', url: 'http://example.com/1.jpg', altText: null, width: null, height: null }] },
+        { ...createMockProduct('2', 'Product 2'), images: [{ id: 'gid://shopify/ProductImage/2', url: 'http://example.com/2.jpg', altText: null, width: null, height: null }] },
+      ];
       vi.mocked(backupProductsBulk).mockResolvedValue({ result: successResult(2), products: productsData });
       const config = makeConfig(tempDir);
 
@@ -371,7 +409,7 @@ describe('runBackup', () => {
     });
 
     it('should report products module status correctly in status.json', async () => {
-      const productsData = [{ id: 'gid://shopify/Product/1', title: 'Test', images: [] }] as any;
+      const productsData: BulkProductNode[] = [createMockProduct('1', 'Test')];
       vi.mocked(backupProductsBulk).mockResolvedValue({ result: successResult(25), products: productsData });
       const config = makeConfig(tempDir);
 

@@ -25,7 +25,7 @@ import { submitBulkOperation, CUSTOMER_BULK_QUERY } from '../graphql/bulk-operat
 import { pollBulkOperation } from '../graphql/polling.js';
 import { downloadBulkOperationResults } from '../graphql/download.js';
 import { reconstructBulkData, type BulkOperationRecord } from '../graphql/jsonl.js';
-import { fetchAllPages } from '../pagination.js';
+import { fetchAllPages, type ShopifyClientWrapper } from '../pagination.js';
 
 /**
  * Backup all customers using Shopify bulk operations with REST API fallback.
@@ -65,7 +65,7 @@ import { fetchAllPages } from '../pagination.js';
 export async function backupCustomersBulk(
   graphqlClient: Pick<GraphQLClient, 'request'>,
   outputDir: string,
-  restClient?: any
+  restClient?: ShopifyClientWrapper
 ): Promise<BackupResult> {
   try {
     // Step 1: Submit bulk operation with customer query
@@ -113,11 +113,11 @@ export async function backupCustomersBulk(
  * Backup customers using REST API (fallback for plans without Protected Customer Data access)
  */
 async function backupCustomersRest(
-  client: any,
+  client: ShopifyClientWrapper,
   outputDir: string
 ): Promise<BackupResult> {
   try {
-    const { items: allCustomers } = await fetchAllPages(client, 'customers', 'customers');
+    const { items: allCustomers } = await fetchAllPages<Record<string, unknown>>(client, 'customers', 'customers');
 
     // REST API doesn't include metafields efficiently - initialize as empty
     for (const customer of allCustomers) {
@@ -130,7 +130,8 @@ async function backupCustomersRest(
     );
 
     return { success: true, count: allCustomers.length };
-  } catch (error: any) {
-    return { success: false, count: 0, error: error.message };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { success: false, count: 0, error: errorMessage };
   }
 }

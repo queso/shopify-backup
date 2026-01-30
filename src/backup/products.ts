@@ -1,7 +1,13 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BackupResult } from '../types.js';
-import { fetchAllPages } from '../pagination.js';
+import { fetchAllPages, type ShopifyClientWrapper } from '../pagination.js';
+
+interface ShopifyProduct {
+  metafields?: unknown[];
+  variants?: Array<{ metafields?: unknown[]; [key: string]: unknown }>;
+  [key: string]: unknown;
+}
 
 /**
  * @deprecated Use backupProductsBulk from ./products-bulk.js instead.
@@ -9,12 +15,12 @@ import { fetchAllPages } from '../pagination.js';
  * The bulk operations approach provides better performance and includes metafields.
  */
 export async function backupProducts(
-  client: any,
+  client: ShopifyClientWrapper,
   outputDir: string,
-): Promise<{ result: BackupResult; products: any[] }> {
+): Promise<{ result: BackupResult; products: ShopifyProduct[] }> {
   try {
     // Fetch all products using pagination utility
-    const { items: products } = await fetchAllPages(client, 'products', 'products');
+    const { items: products } = await fetchAllPages<ShopifyProduct>(client, 'products', 'products');
 
     // TODO: Metafield fetching via individual REST calls hits rate limits too aggressively.
     // Consider using GraphQL bulk operations for metafields in a future iteration.
@@ -32,8 +38,9 @@ export async function backupProducts(
     );
 
     return { result: { success: true, count: allProducts.length }, products: allProducts };
-  } catch (error: any) {
-    console.warn('Products backup failed:', error.message);
-    return { result: { success: false, count: 0, error: error.message }, products: [] };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn('Products backup failed:', errorMessage);
+    return { result: { success: false, count: 0, error: errorMessage }, products: [] };
   }
 }

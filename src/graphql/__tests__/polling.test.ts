@@ -1,16 +1,20 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockedFunction } from 'vitest';
 import { pollBulkOperation, BulkOperationError } from '../polling.js';
-import type { GraphQLResponse, CurrentBulkOperationResponse, BulkOperationStatus, BulkOperationErrorCode } from '../../types/graphql.js';
+import { BulkOperationStatus, BulkOperationErrorCode } from '../../types/graphql.js';
+import type { GraphQLResponse, CurrentBulkOperationResponse } from '../../types/graphql.js';
+import type { GraphQLClient } from '../client.js';
 
 // Mock the rateLimit function to avoid real delays in tests
 vi.mock('../../shopify.js', () => ({
   rateLimit: vi.fn().mockResolvedValue(undefined),
 }));
 
+interface MockGraphQLClient {
+  request: MockedFunction<GraphQLClient['request']>;
+}
+
 describe('pollBulkOperation', () => {
-  let mockClient: {
-    request: ReturnType<typeof vi.fn>;
-  };
+  let mockClient: MockGraphQLClient;
 
   beforeEach(() => {
     mockClient = {
@@ -46,7 +50,7 @@ describe('pollBulkOperation', () => {
           objectCount: options?.objectCount ?? '0',
           url: options?.url ?? null,
           createdAt: '2024-01-15T10:00:00Z',
-          completedAt: status === 'COMPLETED' ? '2024-01-15T10:05:00Z' : null,
+          completedAt: status === BulkOperationStatus.COMPLETED ? '2024-01-15T10:05:00Z' : null,
           fileSize: options?.url ? '1024' : null,
           query: '{ customers { edges { node { id } } } }',
           rootObjectCount: options?.objectCount ?? '0',
@@ -62,12 +66,12 @@ describe('pollBulkOperation', () => {
 
       // First call: RUNNING, second call: COMPLETED
       mockClient.request
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.RUNNING))
         .mockResolvedValueOnce(
-          createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl, objectCount: '150' })
+          createOperationResponse(operationId, BulkOperationStatus.COMPLETED, { url: resultUrl, objectCount: '150' })
         );
 
-      const pollPromise = pollBulkOperation(mockClient as any, operationId);
+      const pollPromise = pollBulkOperation(mockClient, operationId);
 
       // Advance past first poll interval
       await vi.advanceTimersByTimeAsync(1000);
@@ -85,10 +89,10 @@ describe('pollBulkOperation', () => {
       const resultUrl = 'https://storage.shopifycloud.com/results.jsonl';
 
       mockClient.request.mockResolvedValueOnce(
-        createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl })
+        createOperationResponse(operationId, BulkOperationStatus.COMPLETED, { url: resultUrl })
       );
 
-      const result = await pollBulkOperation(mockClient as any, operationId);
+      const result = await pollBulkOperation(mockClient, operationId);
 
       expect(result.status).toBe('COMPLETED');
       expect(result.url).toBe(resultUrl);
@@ -101,14 +105,14 @@ describe('pollBulkOperation', () => {
 
       // Multiple RUNNING states before COMPLETED
       mockClient.request
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'CREATED' as BulkOperationStatus))
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus, { objectCount: '50' }))
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus, { objectCount: '100' }))
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.CREATED))
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.RUNNING, { objectCount: '50' }))
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.RUNNING, { objectCount: '100' }))
         .mockResolvedValueOnce(
-          createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl, objectCount: '150' })
+          createOperationResponse(operationId, BulkOperationStatus.COMPLETED, { url: resultUrl, objectCount: '150' })
         );
 
-      const pollPromise = pollBulkOperation(mockClient as any, operationId);
+      const pollPromise = pollBulkOperation(mockClient, operationId);
 
       // Advance through poll intervals
       await vi.advanceTimersByTimeAsync(1000);
@@ -127,59 +131,59 @@ describe('pollBulkOperation', () => {
       const operationId = 'gid://shopify/BulkOperation/123456789';
 
       mockClient.request.mockResolvedValueOnce(
-        createOperationResponse(operationId, 'FAILED' as BulkOperationStatus, {
-          errorCode: 'TIMEOUT' as BulkOperationErrorCode,
+        createOperationResponse(operationId, BulkOperationStatus.FAILED, {
+          errorCode: BulkOperationErrorCode.TIMEOUT,
         })
       );
 
-      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(BulkOperationError);
+      await expect(pollBulkOperation(mockClient, operationId)).rejects.toThrow(BulkOperationError);
     });
 
     it('should include error code in BulkOperationError message', async () => {
       const operationId = 'gid://shopify/BulkOperation/123456789';
 
       mockClient.request.mockResolvedValueOnce(
-        createOperationResponse(operationId, 'FAILED' as BulkOperationStatus, {
-          errorCode: 'ACCESS_DENIED' as BulkOperationErrorCode,
+        createOperationResponse(operationId, BulkOperationStatus.FAILED, {
+          errorCode: BulkOperationErrorCode.ACCESS_DENIED,
         })
       );
 
-      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(/ACCESS_DENIED/);
+      await expect(pollBulkOperation(mockClient, operationId)).rejects.toThrow(/ACCESS_DENIED/);
     });
 
     it('should throw BulkOperationError on CANCELED status', async () => {
       const operationId = 'gid://shopify/BulkOperation/123456789';
 
       mockClient.request.mockResolvedValueOnce(
-        createOperationResponse(operationId, 'CANCELED' as BulkOperationStatus)
+        createOperationResponse(operationId, BulkOperationStatus.CANCELED)
       );
 
-      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(BulkOperationError);
+      await expect(pollBulkOperation(mockClient, operationId)).rejects.toThrow(BulkOperationError);
     });
 
     it('should include CANCELED in error message', async () => {
       const operationId = 'gid://shopify/BulkOperation/123456789';
 
       mockClient.request.mockResolvedValueOnce(
-        createOperationResponse(operationId, 'CANCELED' as BulkOperationStatus)
+        createOperationResponse(operationId, BulkOperationStatus.CANCELED)
       );
 
-      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(/CANCEL/i);
+      await expect(pollBulkOperation(mockClient, operationId)).rejects.toThrow(/CANCEL/i);
     });
 
     it('should throw if operation becomes FAILED after RUNNING', async () => {
       const operationId = 'gid://shopify/BulkOperation/123456789';
 
       mockClient.request
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.RUNNING))
         .mockResolvedValueOnce(
-          createOperationResponse(operationId, 'FAILED' as BulkOperationStatus, {
-            errorCode: 'INTERNAL_SERVER_ERROR' as BulkOperationErrorCode,
+          createOperationResponse(operationId, BulkOperationStatus.FAILED, {
+            errorCode: BulkOperationErrorCode.INTERNAL_SERVER_ERROR,
           })
         );
 
       let caughtError: unknown;
-      const pollPromise = pollBulkOperation(mockClient as any, operationId).catch((e) => {
+      const pollPromise = pollBulkOperation(mockClient, operationId).catch((e) => {
         caughtError = e;
       });
 
@@ -196,12 +200,12 @@ describe('pollBulkOperation', () => {
 
       // Always return RUNNING
       mockClient.request.mockResolvedValue(
-        createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus)
+        createOperationResponse(operationId, BulkOperationStatus.RUNNING)
       );
 
       // Use a short timeout for testing (5 seconds)
       let caughtError: unknown;
-      const pollPromise = pollBulkOperation(mockClient as any, operationId, {
+      const pollPromise = pollBulkOperation(mockClient, operationId, {
         timeoutMs: 5000,
         pollIntervalMs: 1000,
       }).catch((e) => {
@@ -220,11 +224,11 @@ describe('pollBulkOperation', () => {
 
       // Always return RUNNING
       mockClient.request.mockResolvedValue(
-        createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus)
+        createOperationResponse(operationId, BulkOperationStatus.RUNNING)
       );
 
       let caughtError: unknown;
-      const pollPromise = pollBulkOperation(mockClient as any, operationId).catch((e) => {
+      const pollPromise = pollBulkOperation(mockClient, operationId).catch((e) => {
         caughtError = e;
       });
 
@@ -250,11 +254,11 @@ describe('pollBulkOperation', () => {
 
       // Always return RUNNING
       mockClient.request.mockResolvedValue(
-        createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus)
+        createOperationResponse(operationId, BulkOperationStatus.RUNNING)
       );
 
       let caughtError: unknown;
-      const pollPromise = pollBulkOperation(mockClient as any, operationId, {
+      const pollPromise = pollBulkOperation(mockClient, operationId, {
         signal: abortController.signal,
       }).catch((e) => {
         caughtError = e;
@@ -279,7 +283,7 @@ describe('pollBulkOperation', () => {
       abortController.abort(); // Pre-abort
 
       await expect(
-        pollBulkOperation(mockClient as any, operationId, {
+        pollBulkOperation(mockClient, operationId, {
           signal: abortController.signal,
         })
       ).rejects.toThrow(/abort/i);
@@ -294,12 +298,12 @@ describe('pollBulkOperation', () => {
       const resultUrl = 'https://storage.shopifycloud.com/results.jsonl';
 
       mockClient.request
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.RUNNING))
         .mockResolvedValueOnce(
-          createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl })
+          createOperationResponse(operationId, BulkOperationStatus.COMPLETED, { url: resultUrl })
         );
 
-      const pollPromise = pollBulkOperation(mockClient as any, operationId);
+      const pollPromise = pollBulkOperation(mockClient, operationId);
 
       // After 500ms, should only have one request
       await vi.advanceTimersByTimeAsync(500);
@@ -318,12 +322,12 @@ describe('pollBulkOperation', () => {
       const resultUrl = 'https://storage.shopifycloud.com/results.jsonl';
 
       mockClient.request
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.RUNNING))
         .mockResolvedValueOnce(
-          createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl })
+          createOperationResponse(operationId, BulkOperationStatus.COMPLETED, { url: resultUrl })
         );
 
-      const pollPromise = pollBulkOperation(mockClient as any, operationId, {
+      const pollPromise = pollBulkOperation(mockClient, operationId, {
         pollIntervalMs: 2000,
       });
 
@@ -344,13 +348,13 @@ describe('pollBulkOperation', () => {
       const resultUrl = 'https://storage.shopifycloud.com/results.jsonl';
 
       mockClient.request
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'RUNNING' as BulkOperationStatus))
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.RUNNING))
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.RUNNING))
         .mockResolvedValueOnce(
-          createOperationResponse(operationId, 'COMPLETED' as BulkOperationStatus, { url: resultUrl })
+          createOperationResponse(operationId, BulkOperationStatus.COMPLETED, { url: resultUrl })
         );
 
-      const pollPromise = pollBulkOperation(mockClient as any, operationId, {
+      const pollPromise = pollBulkOperation(mockClient, operationId, {
         pollIntervalMs: 100, // Fast polling
       });
 
@@ -375,7 +379,7 @@ describe('pollBulkOperation', () => {
 
       mockClient.request.mockResolvedValueOnce(nullResponse);
 
-      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow();
+      await expect(pollBulkOperation(mockClient, operationId)).rejects.toThrow();
     });
 
     it('should handle network errors during polling', async () => {
@@ -383,18 +387,18 @@ describe('pollBulkOperation', () => {
 
       mockClient.request.mockRejectedValue(new Error('Network error'));
 
-      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(/Network error/);
+      await expect(pollBulkOperation(mockClient, operationId)).rejects.toThrow(/Network error/);
     });
 
     it('should handle CANCELING status and continue polling', async () => {
       const operationId = 'gid://shopify/BulkOperation/123456789';
 
       mockClient.request
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'CANCELING' as BulkOperationStatus))
-        .mockResolvedValueOnce(createOperationResponse(operationId, 'CANCELED' as BulkOperationStatus));
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.CANCELING))
+        .mockResolvedValueOnce(createOperationResponse(operationId, BulkOperationStatus.CANCELED));
 
       let caughtError: unknown;
-      const pollPromise = pollBulkOperation(mockClient as any, operationId).catch((e) => {
+      const pollPromise = pollBulkOperation(mockClient, operationId).catch((e) => {
         caughtError = e;
       });
 
@@ -409,28 +413,28 @@ describe('pollBulkOperation', () => {
       const operationId = 'gid://shopify/BulkOperation/123456789';
 
       mockClient.request.mockResolvedValueOnce(
-        createOperationResponse(operationId, 'EXPIRED' as BulkOperationStatus)
+        createOperationResponse(operationId, BulkOperationStatus.EXPIRED)
       );
 
-      await expect(pollBulkOperation(mockClient as any, operationId)).rejects.toThrow(BulkOperationError);
+      await expect(pollBulkOperation(mockClient, operationId)).rejects.toThrow(BulkOperationError);
     });
   });
 });
 
 describe('BulkOperationError', () => {
   it('should be an instance of Error', () => {
-    const error = new BulkOperationError('FAILED', 'TIMEOUT' as any, 'Operation failed');
+    const error = new BulkOperationError(BulkOperationStatus.FAILED, BulkOperationErrorCode.TIMEOUT, 'Operation failed');
     expect(error).toBeInstanceOf(Error);
   });
 
   it('should have status and errorCode properties', () => {
-    const error = new BulkOperationError('FAILED', 'ACCESS_DENIED' as any, 'Access denied');
-    expect(error.status).toBe('FAILED');
+    const error = new BulkOperationError(BulkOperationStatus.FAILED, BulkOperationErrorCode.ACCESS_DENIED, 'Access denied');
+    expect(error.status).toBe(BulkOperationStatus.FAILED);
     expect(error.errorCode).toBe('ACCESS_DENIED');
   });
 
   it('should format message with status and error code', () => {
-    const error = new BulkOperationError('FAILED', 'TIMEOUT' as any, 'Operation timed out');
+    const error = new BulkOperationError(BulkOperationStatus.FAILED, BulkOperationErrorCode.TIMEOUT, 'Operation timed out');
     expect(error.message).toContain('FAILED');
     expect(error.message).toContain('TIMEOUT');
   });
@@ -442,7 +446,7 @@ describe('BulkOperationError', () => {
   });
 
   it('should work without a custom message', () => {
-    const error = new BulkOperationError('FAILED', 'INTERNAL_SERVER_ERROR' as any);
+    const error = new BulkOperationError(BulkOperationStatus.FAILED, BulkOperationErrorCode.INTERNAL_SERVER_ERROR);
     expect(error.message).toContain('FAILED');
     expect(error.message).toContain('INTERNAL_SERVER_ERROR');
   });

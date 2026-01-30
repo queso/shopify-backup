@@ -1,15 +1,20 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { BackupResult } from '../types.js';
-import { fetchAllPages } from '../pagination.js';
+import { fetchAllPages, type ShopifyClientWrapper } from '../pagination.js';
+
+interface CustomerData {
+  metafields?: unknown[];
+  [key: string]: unknown;
+}
 
 export async function backupCustomers(
-  client: any,
+  client: ShopifyClientWrapper,
   outputDir: string,
 ): Promise<BackupResult> {
   try {
     // Fetch all customers using pagination utility
-    const { items: allCustomers } = await fetchAllPages(client, 'customers', 'customers');
+    const { items: allCustomers } = await fetchAllPages<CustomerData>(client, 'customers', 'customers');
 
     // TODO: Metafield fetching skipped due to rate limits — use GraphQL bulk ops
     for (const customer of allCustomers) {
@@ -22,8 +27,9 @@ export async function backupCustomers(
     );
 
     return { success: true, count: allCustomers.length };
-  } catch (error: any) {
-    console.warn('Customers backup failed:', error.message);
-    return { success: false, count: 0, error: error.message };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn('Customers backup failed:', errorMessage);
+    return { success: false, count: 0, error: errorMessage };
   }
 }

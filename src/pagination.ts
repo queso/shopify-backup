@@ -1,11 +1,18 @@
+import type { RestClient } from '@shopify/shopify-api';
+import type { PageInfo, RestRequestReturn } from '@shopify/shopify-api';
 import { withRetry } from './shopify.js';
+
+/**
+ * Query parameters for Shopify REST API requests
+ */
+export type QueryParams = Record<string, unknown>;
 
 /**
  * Pagination options for Shopify REST API requests
  */
 export interface PaginationOptions {
   /** Additional query parameters to include in every request */
-  extraQuery?: Record<string, any>;
+  extraQuery?: QueryParams;
 }
 
 /**
@@ -15,7 +22,14 @@ export interface PaginatedResult<T> {
   /** All items collected across all pages */
   items: T[];
   /** The final pageInfo object from the last response */
-  pageInfo?: any;
+  pageInfo?: PageInfo;
+}
+
+/**
+ * Shopify client wrapper interface
+ */
+export interface ShopifyClientWrapper {
+  rest: RestClient;
 }
 
 /**
@@ -42,27 +56,35 @@ export interface PaginatedResult<T> {
  * );
  * ```
  */
-export async function fetchAllPages<T = any>(
-  client: any,
+export async function fetchAllPages<T>(
+  client: ShopifyClientWrapper,
   resourcePath: string,
   bodyKey: string,
   options?: PaginationOptions,
 ): Promise<PaginatedResult<T>> {
   const allItems: T[] = [];
-  let pageInfo: any = undefined;
+  let pageInfo: PageInfo | undefined = undefined;
 
   do {
-    const params: any = {
-      path: resourcePath,
-      query: { limit: 250, ...options?.extraQuery },
-    };
+    // Build request parameters - start with limit and any extra query params
+    const query: QueryParams = { limit: 250, ...options?.extraQuery };
 
     if (pageInfo?.nextPage?.query) {
       // Shopify doesn't allow original query params when using page_info cursor
-      params.query = { limit: 250, ...pageInfo.nextPage.query };
+      Object.assign(query, pageInfo.nextPage.query);
     }
 
-    const response: any = await withRetry(() => client.rest.get({ ...params, tries: 1 }));
+    // Note: query is typed as QueryParams (Record<string, unknown>) but the Shopify API
+    // internally expects SearchParams from @shopify/admin-api-client. Since we don't have
+    // direct access to that type and the runtime behavior is compatible, we cast here.
+    const response: RestRequestReturn<Record<string, unknown>> = await withRetry(() =>
+      client.rest.get({
+        path: resourcePath,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        query: query as any,
+        tries: 1,
+      })
+    );
     const items = response.body[bodyKey];
 
     if (Array.isArray(items)) {

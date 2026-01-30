@@ -1,5 +1,5 @@
 import '@shopify/shopify-api/adapters/node';
-import { shopifyApi, ApiVersion } from '@shopify/shopify-api';
+import { shopifyApi, ApiVersion, type Shopify, type RestClient } from '@shopify/shopify-api';
 import type { BackupConfig, RetryOptions } from './types.js';
 
 const PINNED_API_VERSION = ApiVersion.January25;
@@ -20,8 +20,15 @@ export async function rateLimit(): Promise<void> {
   lastRequestTime = Date.now();
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type, @typescript-eslint/explicit-module-boundary-types
-export function createShopifyClient(config: BackupConfig): { rest: any; api: any } {
+/**
+ * Shopify client wrapper containing both REST and GraphQL clients
+ */
+export interface ShopifyClientWrapper {
+  rest: RestClient;
+  api: Shopify;
+}
+
+export function createShopifyClient(config: BackupConfig): ShopifyClientWrapper {
   const api = shopifyApi({
     apiVersion: PINNED_API_VERSION,
     apiSecretKey: 'not-used-for-custom-apps',
@@ -35,6 +42,24 @@ export function createShopifyClient(config: BackupConfig): { rest: any; api: any
   const restClient = new api.clients.Rest({ session });
 
   return { rest: restClient, api };
+}
+
+/**
+ * Extended error type that may include HTTP response status and retry information
+ */
+interface RetryableError extends Error {
+  response?: {
+    status?: number;
+  };
+  code?: string;
+  retryAfter?: number;
+}
+
+/**
+ * Type guard to check if error has expected retry properties
+ */
+function isRetryableError(error: unknown): error is RetryableError {
+  return error instanceof Error;
 }
 
 export async function withRetry<T>(
@@ -53,30 +78,39 @@ export async function withRetry<T>(
     try {
       await rateLimit();
       return await fn();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      if (!isRetryableError(error)) {
+        throw error;
+      }
+
       lastError = error;
 
       const isThrottled =
-        error?.message?.includes?.('throttling') || error?.message?.includes?.('Exceeded') ||
-        error?.message?.includes?.('maximum number of retries');
+        error.message?.includes('throttling') ||
+        error.message?.includes('Exceeded') ||
+        error.message?.includes('maximum number of retries');
       const effectiveMax = isThrottled ? throttleMaxRetries : maxRetries;
 
       if (attempt >= effectiveMax) break;
 
       const isRetryableStatus =
-        error?.response?.status != null &&
-        retryableStatuses.includes(error.response.status);
-      const isRetryableNetwork =
-        error?.code != null && RETRYABLE_NETWORK_CODES.includes(error.code);
+        error.response?.status != null && retryableStatuses.includes(error.response.status);
+      const isRetryableNetwork = error.code != null && RETRYABLE_NETWORK_CODES.includes(error.code);
 
       if (!isRetryableStatus && !isRetryableNetwork && !isThrottled) {
         throw error;
       }
 
       // Use Retry-After header if available, otherwise exponential backoff
-      const retryAfterSec = error?.retryAfter;
-      const throttleDelay = retryAfterSec ? retryAfterSec * 1000 + 500 : (isThrottled ? 4000 : baseDelay);
-      const delay = retryAfterSec ? throttleDelay : Math.min(throttleDelay * Math.pow(2, attempt), maxDelay);
+      const retryAfterSec = error.retryAfter;
+      const throttleDelay = retryAfterSec
+        ? retryAfterSec * 1000 + 500
+        : isThrottled
+          ? 4000
+          : baseDelay;
+      const delay = retryAfterSec
+        ? throttleDelay
+        : Math.min(throttleDelay * Math.pow(2, attempt), maxDelay);
       console.warn(
         `Retry ${attempt + 1}/${effectiveMax} after ${delay}ms${isThrottled ? ' (throttled)' : ''}`,
       );
@@ -86,9 +120,7 @@ export async function withRetry<T>(
     }
   }
 
-  throw new Error(
-    `Failed after retries: ${lastError?.message ?? 'unknown error'}`,
-  );
+  throw new Error(`Failed after retries: ${lastError?.message ?? 'unknown error'}`);
 }
 
 // Re-export GraphQL client alongside REST client

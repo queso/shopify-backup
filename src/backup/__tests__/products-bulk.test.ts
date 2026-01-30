@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import type { BulkOperation } from '../../types/graphql.js';
 import { BulkOperationStatus, BulkOperationErrorCode } from '../../types/graphql.js';
+import type { GraphQLClient } from '../../graphql/client.js';
 
 // Mock the bulk operation dependencies
 vi.mock('../../graphql/bulk-operations.js', () => ({
@@ -39,9 +40,7 @@ import { backupProductsBulk } from '../products-bulk.js';
 
 describe('backupProductsBulk', () => {
   let tmpDir: string;
-  let mockClient: {
-    request: ReturnType<typeof vi.fn>;
-  };
+  let mockClient: Pick<GraphQLClient, 'request'>;
 
   /**
    * Helper to create a mock completed bulk operation
@@ -205,7 +204,7 @@ describe('backupProductsBulk', () => {
       );
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const { result, products: returnedProducts } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { result, products: returnedProducts } = await backupProductsBulk(mockClient, tmpDir);
 
       // Verify result structure
       expect(result.success).toBe(true);
@@ -226,7 +225,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '2' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      await backupProductsBulk(mockClient as any, tmpDir);
+      await backupProductsBulk(mockClient, tmpDir);
 
       const filePath = path.join(tmpDir, 'products.json');
       const fileContent = await fs.readFile(filePath, 'utf-8');
@@ -241,7 +240,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      await backupProductsBulk(mockClient as any, tmpDir);
+      await backupProductsBulk(mockClient, tmpDir);
 
       expect(submitBulkOperation).toHaveBeenCalledTimes(1);
       expect(submitBulkOperation).toHaveBeenCalledWith(
@@ -257,7 +256,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      await backupProductsBulk(mockClient as any, tmpDir);
+      await backupProductsBulk(mockClient, tmpDir);
 
       expect(pollBulkOperation).toHaveBeenCalledTimes(1);
       expect(pollBulkOperation).toHaveBeenCalledWith(
@@ -276,7 +275,7 @@ describe('backupProductsBulk', () => {
       );
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      await backupProductsBulk(mockClient as any, tmpDir);
+      await backupProductsBulk(mockClient, tmpDir);
 
       expect(downloadBulkOperationResults).toHaveBeenCalledWith(resultUrl);
     });
@@ -293,7 +292,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(submitBulkOperation).mockResolvedValue('gid://shopify/BulkOperation/123');
       vi.mocked(pollBulkOperation).mockResolvedValue(operationWithNoUrl);
 
-      const { result, products } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { result, products } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
       expect(result.count).toBe(0);
@@ -312,7 +311,7 @@ describe('backupProductsBulk', () => {
       );
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      const { result, products } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { result, products } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
       expect(result.count).toBe(0);
@@ -326,7 +325,7 @@ describe('backupProductsBulk', () => {
         new Error('A bulk operation is already in progress')
       );
 
-      const { result, products } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { result, products } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.count).toBe(0);
@@ -340,7 +339,7 @@ describe('backupProductsBulk', () => {
         new BulkOperationError(BulkOperationStatus.FAILED, BulkOperationErrorCode.TIMEOUT, 'Operation timed out')
       );
 
-      const { result } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { result } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.count).toBe(0);
@@ -354,7 +353,7 @@ describe('backupProductsBulk', () => {
         new Error('Failed to download bulk operation results: 404 Not Found')
       );
 
-      const { result } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { result } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/download|404/i);
@@ -366,7 +365,7 @@ describe('backupProductsBulk', () => {
         new BulkOperationError(BulkOperationStatus.CANCELED, null, 'Operation was canceled')
       );
 
-      const { result } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { result } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/cancel/i);
@@ -386,7 +385,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const { result, products } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { result, products } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
       expect(products[0].variants).toHaveLength(2);
@@ -411,7 +410,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const { products } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { products } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(products[0].variants[0].metafields).toHaveLength(1);
       expect(products[0].variants[0].metafields[0].key).toBe('variant_material');
@@ -429,7 +428,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const { products } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { products } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(products[0].metafields).toHaveLength(1);
       expect(products[0].metafields[0].key).toBe('product_care');
@@ -448,7 +447,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const { products } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { products } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(products[0].images).toHaveLength(2);
       expect(products[0].images[0].url).toBe('https://cdn.shopify.com/image-100.jpg');
@@ -485,7 +484,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const { products } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { products } = await backupProductsBulk(mockClient, tmpDir);
 
       // Product level
       expect(products[0].metafields).toHaveLength(1);
@@ -507,7 +506,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(createFlatProductData('1'));
 
-      await backupProductsBulk(mockClient as any, tmpDir);
+      await backupProductsBulk(mockClient, tmpDir);
 
       const filePath = path.join(tmpDir, 'products.json');
 
@@ -529,7 +528,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(createFlatProductData('42'));
 
-      await backupProductsBulk(mockClient as any, tmpDir);
+      await backupProductsBulk(mockClient, tmpDir);
 
       const expectedPath = path.join(tmpDir, 'products.json');
       const content = await fs.readFile(expectedPath, 'utf-8');
@@ -550,7 +549,7 @@ describe('backupProductsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      await backupProductsBulk(mockClient as any, tmpDir);
+      await backupProductsBulk(mockClient, tmpDir);
 
       const content = await fs.readFile(path.join(tmpDir, 'products.json'), 'utf-8');
       const products = JSON.parse(content);
@@ -584,7 +583,7 @@ describe('backupProductsBulk', () => {
       ];
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const { result, products } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { result, products } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(result).toEqual({
         success: true,
@@ -598,7 +597,7 @@ describe('backupProductsBulk', () => {
 
       vi.mocked(submitBulkOperation).mockRejectedValue(new Error(errorMessage));
 
-      const { result, products } = await backupProductsBulk(mockClient as any, tmpDir);
+      const { result, products } = await backupProductsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.count).toBe(0);

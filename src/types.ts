@@ -121,61 +121,61 @@ export interface ShopifyRestResponse<T> {
  * Response body for products endpoint
  */
 export interface ProductsBody {
-  products: any[];
+  products: Record<string, unknown>[];
 }
 
 /**
  * Response body for customers endpoint
  */
 export interface CustomersBody {
-  customers: any[];
+  customers: Record<string, unknown>[];
 }
 
 /**
  * Response body for orders endpoint
  */
 export interface OrdersBody {
-  orders: any[];
+  orders: Record<string, unknown>[];
 }
 
 /**
  * Response body for pages endpoint
  */
 export interface PagesBody {
-  pages: any[];
+  pages: Record<string, unknown>[];
 }
 
 /**
  * Response body for smart_collections endpoint
  */
 export interface SmartCollectionsBody {
-  smart_collections: any[];
+  smart_collections: Record<string, unknown>[];
 }
 
 /**
  * Response body for custom_collections endpoint
  */
 export interface CustomCollectionsBody {
-  custom_collections: any[];
+  custom_collections: Record<string, unknown>[];
 }
 
 /**
  * Response body for blogs endpoint
  */
 export interface BlogsBody {
-  blogs: any[];
+  blogs: Record<string, unknown>[];
 }
 
 /**
  * Response body for metafields endpoint
  */
 export interface MetafieldsBody {
-  metafields: any[];
+  metafields: Record<string, unknown>[];
 }
 
 /**
  * Response body for articles endpoint
  */
 export interface ArticlesBody {
-  articles: any[];
+  articles: Record<string, unknown>[];
 }

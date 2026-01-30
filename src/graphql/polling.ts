@@ -168,7 +168,7 @@ export async function pollBulkOperation(
   const startTime = Date.now();
   let pollCount = 0;
 
-  // eslint-disable-next-line no-constant-condition
+   
   while (true) {
     // Check timeout
     const elapsed = Date.now() - startTime;

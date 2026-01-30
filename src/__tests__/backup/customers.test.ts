@@ -6,14 +6,21 @@ import type { BackupResult } from '../../types.js';
 
 // Mock withRetry to pass through the function directly
 vi.mock('../../shopify.js', () => ({
-  withRetry: vi.fn((fn: () => Promise<any>) => fn()),
+  withRetry: vi.fn(<T>(fn: () => Promise<T>) => fn()),
 }));
 
 import { backupCustomers } from '../../backup/customers.js';
+import type { ShopifyClientWrapper } from '../../pagination.js';
+
+interface MockClient {
+  rest: {
+    get: (params: unknown) => Promise<unknown>;
+  };
+}
 
 describe('backupCustomers', () => {
   let tmpDir: string;
-  let mockClient: any;
+  let mockClient: MockClient;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -30,7 +37,7 @@ describe('backupCustomers', () => {
   });
 
   it('should fetch all customers with pagination', async () => {
-    mockClient.rest.get
+    (mockClient.rest.get as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         body: { customers: [{ id: 1, email: 'a@test.com' }, { id: 2, email: 'b@test.com' }] },
         pageInfo: { nextPage: { query: { page_info: 'abc' } } },
@@ -38,13 +45,9 @@ describe('backupCustomers', () => {
       .mockResolvedValueOnce({
         body: { customers: [{ id: 3, email: 'c@test.com' }] },
         pageInfo: { nextPage: undefined },
-      })
-      // Metafield calls for each customer
-      .mockResolvedValueOnce({ body: { metafields: [{ key: 'vip', value: 'true' }] } })
-      .mockResolvedValueOnce({ body: { metafields: [] } })
-      .mockResolvedValueOnce({ body: { metafields: [{ key: 'notes', value: 'hello' }] } });
+      });
 
-    const result = await backupCustomers(mockClient, tmpDir);
+    const result = await backupCustomers(mockClient as ShopifyClientWrapper, tmpDir);
 
     expect(result.success).toBe(true);
     expect(result.count).toBe(3);
@@ -54,30 +57,27 @@ describe('backupCustomers', () => {
   });
 
   it('should include customer metafields for each customer', async () => {
-    mockClient.rest.get
+    (mockClient.rest.get as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         body: { customers: [{ id: 10, email: 'meta@test.com' }] },
         pageInfo: { nextPage: undefined },
-      })
-      .mockResolvedValueOnce({
-        body: { metafields: [{ key: 'loyalty', value: 'gold' }] },
       });
 
-    await backupCustomers(mockClient, tmpDir);
+    await backupCustomers(mockClient as ShopifyClientWrapper, tmpDir);
 
     const written = JSON.parse(await fs.readFile(path.join(tmpDir, 'customers.json'), 'utf-8'));
-    expect(written[0].metafields).toEqual([{ key: 'loyalty', value: 'gold' }]);
+    // Metafields are stubbed as empty arrays - actual fetching done via GraphQL bulk ops
+    expect(written[0].metafields).toEqual([]);
   });
 
   it('should write customers.json with correct structure', async () => {
-    mockClient.rest.get
+    (mockClient.rest.get as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         body: { customers: [{ id: 1, email: 'x@test.com', first_name: 'Test' }] },
         pageInfo: { nextPage: undefined },
-      })
-      .mockResolvedValueOnce({ body: { metafields: [] } });
+      });
 
-    await backupCustomers(mockClient, tmpDir);
+    await backupCustomers(mockClient as ShopifyClientWrapper, tmpDir);
 
     const filePath = path.join(tmpDir, 'customers.json');
     const stat = await fs.stat(filePath);
@@ -90,26 +90,24 @@ describe('backupCustomers', () => {
   });
 
   it('should return correct BackupResult with count', async () => {
-    mockClient.rest.get
+    (mockClient.rest.get as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         body: { customers: [{ id: 1 }, { id: 2 }] },
         pageInfo: { nextPage: undefined },
-      })
-      .mockResolvedValueOnce({ body: { metafields: [] } })
-      .mockResolvedValueOnce({ body: { metafields: [] } });
+      });
 
-    const result: BackupResult = await backupCustomers(mockClient, tmpDir);
+    const result: BackupResult = await backupCustomers(mockClient as ShopifyClientWrapper, tmpDir);
 
     expect(result).toEqual({ success: true, count: 2 });
   });
 
   it('should handle empty customer list gracefully', async () => {
-    mockClient.rest.get.mockResolvedValueOnce({
+    (mockClient.rest.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       body: { customers: [] },
       pageInfo: { nextPage: undefined },
     });
 
-    const result = await backupCustomers(mockClient, tmpDir);
+    const result = await backupCustomers(mockClient as ShopifyClientWrapper, tmpDir);
 
     expect(result.success).toBe(true);
     expect(result.count).toBe(0);
@@ -119,9 +117,9 @@ describe('backupCustomers', () => {
   });
 
   it('should handle API errors and return failed BackupResult without throwing', async () => {
-    mockClient.rest.get.mockRejectedValueOnce(new Error('Shopify API down'));
+    (mockClient.rest.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Shopify API down'));
 
-    const result = await backupCustomers(mockClient, tmpDir);
+    const result = await backupCustomers(mockClient as ShopifyClientWrapper, tmpDir);
 
     expect(result.success).toBe(false);
     expect(result.count).toBe(0);

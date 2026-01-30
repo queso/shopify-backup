@@ -10,11 +10,11 @@ vi.stubGlobal('fetch', mockFetch);
 
 import { downloadProductImages } from '../images.js';
 
-function makeProduct(id: number, images: Array<{ src: string; position: number }>) {
+function makeProduct(id: number, images: Array<{ src: string; position: number }>): { id: number; images: Array<{ src: string; position: number }> } {
   return { id, images };
 }
 
-function fakeImageResponse(contentType = 'image/jpeg') {
+function fakeImageResponse(contentType = 'image/jpeg'): Promise<Response> {
   return Promise.resolve(
     new Response(Buffer.from('fake-image-data'), {
       status: 200,

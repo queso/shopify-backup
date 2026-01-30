@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockedFunction } from 'vitest';
 import { createGraphQLClient, executeQuery, executeMutation } from '../client.js';
 import type { GraphQLResponse, GraphQLError, UserError } from '../../types/graphql.js';
 
@@ -17,9 +17,11 @@ describe('GraphQL Client', () => {
     retentionDays: 30,
   };
 
-  let mockGraphQLClient: {
-    request: ReturnType<typeof vi.fn>;
-  };
+  interface MockGraphQLClient {
+    request: MockedFunction<import('../client.js').GraphQLClient['request']>;
+  }
+
+  let mockGraphQLClient: MockGraphQLClient;
 
   beforeEach(() => {
     mockGraphQLClient = {
@@ -69,7 +71,7 @@ describe('GraphQL Client', () => {
       mockGraphQLClient.request.mockResolvedValue(mockResponse);
 
       const query = `query { shop { name } }`;
-      const result = await executeQuery(mockGraphQLClient as any, query);
+      const result = await executeQuery(mockGraphQLClient , query);
 
       expect(result).toEqual({ shop: { name: 'Test Shop' } });
       expect(mockGraphQLClient.request).toHaveBeenCalledWith(query, { variables: undefined });
@@ -84,7 +86,7 @@ describe('GraphQL Client', () => {
 
       const query = `query getCustomer($id: ID!) { customer(id: $id) { id } }`;
       const variables = { id: 'gid://shopify/Customer/123' };
-      const result = await executeQuery(mockGraphQLClient as any, query, variables);
+      const result = await executeQuery(mockGraphQLClient , query, variables);
 
       expect(result).toEqual({ customer: { id: 'gid://shopify/Customer/123' } });
       expect(mockGraphQLClient.request).toHaveBeenCalledWith(query, { variables });
@@ -100,7 +102,7 @@ describe('GraphQL Client', () => {
       ];
 
       const mockResponse: GraphQLResponse<null> = {
-        data: null as any,
+        data: null ,
         errors: graphqlErrors,
       };
 
@@ -108,7 +110,7 @@ describe('GraphQL Client', () => {
 
       const query = `query { shop { nonexistent } }`;
 
-      await expect(executeQuery(mockGraphQLClient as any, query)).rejects.toThrow(/GraphQL/i);
+      await expect(executeQuery(mockGraphQLClient , query)).rejects.toThrow(/GraphQL/i);
     });
 
     it('should handle multiple GraphQL errors', async () => {
@@ -118,7 +120,7 @@ describe('GraphQL Client', () => {
       ];
 
       const mockResponse: GraphQLResponse<null> = {
-        data: null as any,
+        data: null ,
         errors: graphqlErrors,
       };
 
@@ -126,7 +128,7 @@ describe('GraphQL Client', () => {
 
       const query = `query { field1 field2 }`;
 
-      await expect(executeQuery(mockGraphQLClient as any, query)).rejects.toThrow();
+      await expect(executeQuery(mockGraphQLClient , query)).rejects.toThrow();
     });
 
     it('should handle network errors', async () => {
@@ -134,7 +136,7 @@ describe('GraphQL Client', () => {
 
       const query = `query { shop { name } }`;
 
-      await expect(executeQuery(mockGraphQLClient as any, query)).rejects.toThrow('Network error');
+      await expect(executeQuery(mockGraphQLClient , query)).rejects.toThrow('Network error');
     });
 
     it('should handle empty data response', async () => {
@@ -145,7 +147,7 @@ describe('GraphQL Client', () => {
       mockGraphQLClient.request.mockResolvedValue(mockResponse);
 
       const query = `query { customers { edges { node { id } } } }`;
-      const result = await executeQuery(mockGraphQLClient as any, query);
+      const result = await executeQuery(mockGraphQLClient , query);
 
       expect(result).toEqual({ customers: null });
     });
@@ -176,7 +178,7 @@ describe('GraphQL Client', () => {
 
       const result = await executeMutation<{
         customerCreate: { customer: { id: string }; userErrors: UserError[] };
-      }>(mockGraphQLClient as any, mutation, variables);
+      }>(mockGraphQLClient , mutation, variables);
 
       expect(result.customerCreate.customer.id).toBe('gid://shopify/Customer/123');
       expect(result.customerCreate.userErrors).toHaveLength(0);
@@ -203,7 +205,7 @@ describe('GraphQL Client', () => {
       const mutation = `mutation { customerCreate(input: {}) { customer { id } userErrors { field message } } }`;
 
       await expect(
-        executeMutation(mockGraphQLClient as any, mutation, {}, { throwOnUserErrors: true })
+        executeMutation(mockGraphQLClient , mutation, {}, { throwOnUserErrors: true })
       ).rejects.toThrow(/Email has already been taken/);
     });
 
@@ -228,7 +230,7 @@ describe('GraphQL Client', () => {
       const mutation = `mutation { customerCreate(input: {}) { customer { id } userErrors { field message } } }`;
       const result = await executeMutation<{
         customerCreate: { customer: null; userErrors: UserError[] };
-      }>(mockGraphQLClient as any, mutation, {}, { throwOnUserErrors: false });
+      }>(mockGraphQLClient , mutation, {}, { throwOnUserErrors: false });
 
       expect(result.customerCreate.userErrors).toHaveLength(1);
       expect(result.customerCreate.userErrors[0].message).toBe('Invalid email format');
@@ -256,7 +258,7 @@ describe('GraphQL Client', () => {
       const mutation = `mutation { customerCreate(input: {}) { customer { id } userErrors { field message } } }`;
 
       await expect(
-        executeMutation(mockGraphQLClient as any, mutation, {}, { throwOnUserErrors: true })
+        executeMutation(mockGraphQLClient , mutation, {}, { throwOnUserErrors: true })
       ).rejects.toThrow();
     });
 
@@ -266,7 +268,7 @@ describe('GraphQL Client', () => {
       ];
 
       const mockResponse: GraphQLResponse<null> = {
-        data: null as any,
+        data: null ,
         errors: graphqlErrors,
       };
 
@@ -274,7 +276,7 @@ describe('GraphQL Client', () => {
 
       const mutation = `mutation { bulkOperationRunQuery(query: "{}") { bulkOperation { id } } }`;
 
-      await expect(executeMutation(mockGraphQLClient as any, mutation)).rejects.toThrow(/GraphQL/i);
+      await expect(executeMutation(mockGraphQLClient , mutation)).rejects.toThrow(/GraphQL/i);
     });
 
     it('should handle user errors with null field path', async () => {
@@ -298,7 +300,7 @@ describe('GraphQL Client', () => {
       const mutation = `mutation { customerCreate(input: {}) { customer { id } userErrors { field message } } }`;
 
       await expect(
-        executeMutation(mockGraphQLClient as any, mutation, {}, { throwOnUserErrors: true })
+        executeMutation(mockGraphQLClient , mutation, {}, { throwOnUserErrors: true })
       ).rejects.toThrow(/General validation error/);
     });
   });
@@ -329,7 +331,7 @@ describe('GraphQL Client', () => {
       ];
 
       const mockResponse: GraphQLResponse<null> = {
-        data: null as any,
+        data: null ,
         errors: graphqlErrors,
       };
 
@@ -338,10 +340,10 @@ describe('GraphQL Client', () => {
       const query = `query { shop { orders { edges { node { id } } } } }`;
 
       try {
-        await executeQuery(mockGraphQLClient as any, query);
+        await executeQuery(mockGraphQLClient , query);
         expect.fail('Should have thrown');
-      } catch (error: any) {
-        expect(error.message).toContain('Cannot query field');
+      } catch (error: unknown) {
+        expect((error as Error).message).toContain('Cannot query field');
       }
     });
 
@@ -366,10 +368,10 @@ describe('GraphQL Client', () => {
       const mutation = `mutation { customerUpdate(input: {}) { customer { id } userErrors { field message } } }`;
 
       try {
-        await executeMutation(mockGraphQLClient as any, mutation, {}, { throwOnUserErrors: true });
+        await executeMutation(mockGraphQLClient , mutation, {}, { throwOnUserErrors: true });
         expect.fail('Should have thrown');
-      } catch (error: any) {
-        expect(error.message).toContain('City is required');
+      } catch (error: unknown) {
+        expect((error as Error).message).toContain('City is required');
       }
     });
   });

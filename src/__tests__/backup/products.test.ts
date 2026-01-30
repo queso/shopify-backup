@@ -6,17 +6,35 @@ import * as os from 'node:os';
 
 // Mock withRetry to pass through calls (or wrap them)
 vi.mock('../../shopify.js', () => ({
-  withRetry: vi.fn((fn: () => any) => fn()),
+  withRetry: vi.fn(<T>(fn: () => T) => fn()),
 }));
 
 import { backupProducts } from '../../backup/products.js';
 import { withRetry } from '../../shopify.js';
+import type { ShopifyClientWrapper } from '../../pagination.js';
+
+interface MockVariant {
+  id: number;
+  title: string;
+}
+
+interface MockProduct {
+  id: number;
+  title: string;
+  variants: MockVariant[];
+}
+
+interface MockClient {
+  rest: {
+    get: (params: unknown) => Promise<unknown>;
+  };
+}
 
 describe('backupProducts', () => {
   let tempDir: string;
-  let mockClient: any;
+  let mockClient: MockClient;
 
-  const makeProduct = (id: number, title: string, variants: any[] = []) => ({
+  const makeProduct = (id: number, title: string, variants: MockVariant[] = []): MockProduct => ({
     id,
     title,
     variants: variants.length ? variants : [{ id: id * 100, title: 'Default' }],
@@ -40,7 +58,7 @@ describe('backupProducts', () => {
 
   describe('pagination', () => {
     it('should fetch all products across multiple pages', async () => {
-      mockClient.rest.get
+      (mockClient.rest.get as ReturnType<typeof vi.fn>)
         // Page 1: has next page link
         .mockResolvedValueOnce({
           body: { products: [makeProduct(1, 'Product A'), makeProduct(2, 'Product B')] },
@@ -52,21 +70,9 @@ describe('backupProducts', () => {
           body: { products: [makeProduct(3, 'Product C')] },
           headers: {},
           pageInfo: { nextPage: undefined },
-        })
-        // Product 1 metafields
-        .mockResolvedValueOnce({ body: { metafields: [{ key: 'color', value: 'red' }] } })
-        // Product 1 variant metafields
-        .mockResolvedValueOnce({ body: { metafields: [] } })
-        // Product 2 metafields
-        .mockResolvedValueOnce({ body: { metafields: [] } })
-        // Product 2 variant metafields
-        .mockResolvedValueOnce({ body: { metafields: [] } })
-        // Product 3 metafields
-        .mockResolvedValueOnce({ body: { metafields: [] } })
-        // Product 3 variant metafields
-        .mockResolvedValueOnce({ body: { metafields: [] } });
+        });
 
-      const { result } = await backupProducts(mockClient, tempDir);
+      const { result } = await backupProducts(mockClient as ShopifyClientWrapper, tempDir);
 
       expect(result.success).toBe(true);
       expect(result.count).toBe(3);
@@ -74,63 +80,48 @@ describe('backupProducts', () => {
   });
 
   describe('metafields', () => {
-    it('should include product metafields for each product', async () => {
-      const productMetafields = [
-        { key: 'material', value: 'cotton', namespace: 'custom' },
-      ];
-
-      mockClient.rest.get
+    it('should stub product metafields as empty arrays', async () => {
+      (mockClient.rest.get as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce({
           body: { products: [makeProduct(1, 'Shirt')] },
           pageInfo: { nextPage: undefined },
-        })
-        .mockResolvedValueOnce({ body: { metafields: productMetafields } })
-        .mockResolvedValueOnce({ body: { metafields: [] } }); // variant metafields
+        });
 
-      await backupProducts(mockClient, tempDir);
+      await backupProducts(mockClient as ShopifyClientWrapper, tempDir);
 
       const written = JSON.parse(fs.readFileSync(path.join(tempDir, 'products.json'), 'utf-8'));
-      expect(written[0].metafields).toEqual(productMetafields);
+      expect(written[0].metafields).toEqual([]);
     });
 
-    it('should include variant metafields for each variant', async () => {
-      const variantMetafields = [{ key: 'weight', value: '200g', namespace: 'custom' }];
+    it('should stub variant metafields as empty arrays', async () => {
       const product = makeProduct(1, 'Shirt', [
         { id: 100, title: 'Small' },
         { id: 101, title: 'Large' },
       ]);
 
-      mockClient.rest.get
+      (mockClient.rest.get as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce({
           body: { products: [product] },
           pageInfo: { nextPage: undefined },
-        })
-        // product metafields
-        .mockResolvedValueOnce({ body: { metafields: [] } })
-        // variant 100 metafields
-        .mockResolvedValueOnce({ body: { metafields: variantMetafields } })
-        // variant 101 metafields
-        .mockResolvedValueOnce({ body: { metafields: [] } });
+        });
 
-      await backupProducts(mockClient, tempDir);
+      await backupProducts(mockClient as ShopifyClientWrapper, tempDir);
 
       const written = JSON.parse(fs.readFileSync(path.join(tempDir, 'products.json'), 'utf-8'));
-      expect(written[0].variants[0].metafields).toEqual(variantMetafields);
+      expect(written[0].variants[0].metafields).toEqual([]);
       expect(written[0].variants[1].metafields).toEqual([]);
     });
   });
 
   describe('file output', () => {
     it('should write products.json with correct structure', async () => {
-      mockClient.rest.get
+      (mockClient.rest.get as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce({
           body: { products: [makeProduct(1, 'Widget')] },
           pageInfo: { nextPage: undefined },
-        })
-        .mockResolvedValueOnce({ body: { metafields: [] } })
-        .mockResolvedValueOnce({ body: { metafields: [] } });
+        });
 
-      await backupProducts(mockClient, tempDir);
+      await backupProducts(mockClient as ShopifyClientWrapper, tempDir);
 
       const filePath = path.join(tempDir, 'products.json');
       expect(fs.existsSync(filePath)).toBe(true);
@@ -144,17 +135,13 @@ describe('backupProducts', () => {
 
   describe('return value', () => {
     it('should return BackupResult with correct count', async () => {
-      mockClient.rest.get
+      (mockClient.rest.get as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce({
           body: { products: [makeProduct(1, 'A'), makeProduct(2, 'B')] },
           pageInfo: { nextPage: undefined },
-        })
-        .mockResolvedValueOnce({ body: { metafields: [] } })
-        .mockResolvedValueOnce({ body: { metafields: [] } })
-        .mockResolvedValueOnce({ body: { metafields: [] } })
-        .mockResolvedValueOnce({ body: { metafields: [] } });
+        });
 
-      const { result } = await backupProducts(mockClient, tempDir);
+      const { result } = await backupProducts(mockClient as ShopifyClientWrapper, tempDir);
 
       expect(result).toEqual({ success: true, count: 2 });
     });
@@ -162,12 +149,12 @@ describe('backupProducts', () => {
 
   describe('empty store', () => {
     it('should handle zero products gracefully', async () => {
-      mockClient.rest.get.mockResolvedValueOnce({
+      (mockClient.rest.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         body: { products: [] },
         pageInfo: { nextPage: undefined },
       });
 
-      const { result } = await backupProducts(mockClient, tempDir);
+      const { result } = await backupProducts(mockClient as ShopifyClientWrapper, tempDir);
 
       expect(result.success).toBe(true);
       expect(result.count).toBe(0);
@@ -179,9 +166,9 @@ describe('backupProducts', () => {
 
   describe('error handling', () => {
     it('should return failed BackupResult on API error without throwing', async () => {
-      mockClient.rest.get.mockRejectedValueOnce(new Error('API connection failed'));
+      (mockClient.rest.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('API connection failed'));
 
-      const { result } = await backupProducts(mockClient, tempDir);
+      const { result } = await backupProducts(mockClient as ShopifyClientWrapper, tempDir);
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
@@ -193,15 +180,13 @@ describe('backupProducts', () => {
     it('should use withRetry wrapper for API calls', async () => {
       const mockedWithRetry = vi.mocked(withRetry);
 
-      mockClient.rest.get
+      (mockClient.rest.get as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce({
           body: { products: [makeProduct(1, 'A')] },
           pageInfo: { nextPage: undefined },
-        })
-        .mockResolvedValueOnce({ body: { metafields: [] } })
-        .mockResolvedValueOnce({ body: { metafields: [] } });
+        });
 
-      await backupProducts(mockClient, tempDir);
+      await backupProducts(mockClient as ShopifyClientWrapper, tempDir);
 
       expect(mockedWithRetry).toHaveBeenCalled();
     });

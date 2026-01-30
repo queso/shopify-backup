@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockedFunction } from 'vitest';
 import {
   submitBulkOperation,
   CUSTOMER_BULK_QUERY,
@@ -8,11 +8,14 @@ import {
 } from '../bulk-operations.js';
 import { BulkOperationStatus } from '../../types/graphql.js';
 import type { GraphQLResponse, BulkOperationRunQueryResponse, UserError, GraphQLError } from '../../types/graphql.js';
+import type { GraphQLClient } from '../client.js';
+
+interface MockGraphQLClient {
+  request: MockedFunction<GraphQLClient['request']>;
+}
 
 describe('submitBulkOperation', () => {
-  let mockClient: {
-    request: ReturnType<typeof vi.fn>;
-  };
+  let mockClient: MockGraphQLClient;
 
   beforeEach(() => {
     mockClient = {
@@ -50,7 +53,7 @@ describe('submitBulkOperation', () => {
       mockClient.request.mockResolvedValue(mockResponse);
 
       const query = '{ customers { edges { node { id email } } } }';
-      const result = await submitBulkOperation(mockClient as any, query);
+      const result = await submitBulkOperation(mockClient, query);
 
       expect(result).toBe('gid://shopify/BulkOperation/123456789');
       expect(mockClient.request).toHaveBeenCalledTimes(1);
@@ -80,7 +83,7 @@ describe('submitBulkOperation', () => {
       mockClient.request.mockResolvedValue(mockResponse);
 
       const query = '{ products { edges { node { id title } } } }';
-      await submitBulkOperation(mockClient as any, query);
+      await submitBulkOperation(mockClient, query);
 
       // Verify the mutation was called with the query as a variable
       expect(mockClient.request).toHaveBeenCalledWith(
@@ -114,7 +117,7 @@ describe('submitBulkOperation', () => {
 
       const query = '{ customers { edges { node { id } } } }';
 
-      await expect(submitBulkOperation(mockClient as any, query)).rejects.toThrow(
+      await expect(submitBulkOperation(mockClient, query)).rejects.toThrow(
         /bulk operation is already in progress/i
       );
     });
@@ -138,7 +141,7 @@ describe('submitBulkOperation', () => {
 
       const query = '{ invalidQuery }';
 
-      await expect(submitBulkOperation(mockClient as any, query)).rejects.toThrow();
+      await expect(submitBulkOperation(mockClient, query)).rejects.toThrow();
     });
 
     it('should throw on user errors with null field', async () => {
@@ -159,7 +162,7 @@ describe('submitBulkOperation', () => {
 
       const query = '{ customers { edges { node { id } } } }';
 
-      await expect(submitBulkOperation(mockClient as any, query)).rejects.toThrow(
+      await expect(submitBulkOperation(mockClient, query)).rejects.toThrow(
         /Access denied/i
       );
     });
@@ -175,7 +178,12 @@ describe('submitBulkOperation', () => {
       ];
 
       const mockResponse: GraphQLResponse<BulkOperationRunQueryResponse> = {
-        data: null as any,
+        data: {
+          bulkOperationRunQuery: {
+            bulkOperation: null,
+            userErrors: [],
+          },
+        },
         errors: graphqlErrors,
       };
 
@@ -183,7 +191,7 @@ describe('submitBulkOperation', () => {
 
       const query = '{ customers { edges { node { id } } } }';
 
-      await expect(submitBulkOperation(mockClient as any, query)).rejects.toThrow(/GraphQL/i);
+      await expect(submitBulkOperation(mockClient, query)).rejects.toThrow(/GraphQL/i);
     });
 
     it('should throw on network errors', async () => {
@@ -191,7 +199,7 @@ describe('submitBulkOperation', () => {
 
       const query = '{ customers { edges { node { id } } } }';
 
-      await expect(submitBulkOperation(mockClient as any, query)).rejects.toThrow(
+      await expect(submitBulkOperation(mockClient, query)).rejects.toThrow(
         /Network request failed/
       );
     });
@@ -212,7 +220,7 @@ describe('submitBulkOperation', () => {
 
       const query = '{ customers { edges { node { id } } } }';
 
-      await expect(submitBulkOperation(mockClient as any, query)).rejects.toThrow();
+      await expect(submitBulkOperation(mockClient, query)).rejects.toThrow();
     });
   });
 });

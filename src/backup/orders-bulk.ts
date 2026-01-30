@@ -25,7 +25,7 @@ import { submitBulkOperation, ORDER_BULK_QUERY } from '../graphql/bulk-operation
 import { pollBulkOperation } from '../graphql/polling.js';
 import { downloadBulkOperationResults } from '../graphql/download.js';
 import { reconstructBulkData, type BulkOperationRecord } from '../graphql/jsonl.js';
-import { fetchAllPages } from '../pagination.js';
+import { fetchAllPages, type ShopifyClientWrapper } from '../pagination.js';
 
 /**
  * Backup all orders using Shopify bulk operations with REST API fallback.
@@ -65,7 +65,7 @@ import { fetchAllPages } from '../pagination.js';
 export async function backupOrdersBulk(
   graphqlClient: Pick<GraphQLClient, 'request'>,
   outputDir: string,
-  restClient?: any
+  restClient?: ShopifyClientWrapper
 ): Promise<BackupResult> {
   try {
     // Step 1: Submit bulk operation with order query
@@ -113,11 +113,11 @@ export async function backupOrdersBulk(
  * Backup orders using REST API (fallback for plans without Protected Customer Data access)
  */
 async function backupOrdersRest(
-  client: any,
+  client: ShopifyClientWrapper,
   outputDir: string
 ): Promise<BackupResult> {
   try {
-    const { items: allOrders } = await fetchAllPages(
+    const { items: allOrders } = await fetchAllPages<Record<string, unknown>>(
       client,
       'orders',
       'orders',
@@ -135,7 +135,8 @@ async function backupOrdersRest(
     );
 
     return { success: true, count: allOrders.length };
-  } catch (error: any) {
-    return { success: false, count: 0, error: error.message };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { success: false, count: 0, error: errorMessage };
   }
 }

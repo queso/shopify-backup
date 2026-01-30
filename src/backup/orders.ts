@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BackupResult } from '../types.js';
-import { fetchAllPages } from '../pagination.js';
+import { fetchAllPages, type ShopifyClientWrapper } from '../pagination.js';
 
 /**
  * @deprecated Use backupOrdersBulk from ./orders-bulk.js instead.
@@ -9,12 +9,12 @@ import { fetchAllPages } from '../pagination.js';
  * The bulk operations approach provides better performance and includes metafields.
  */
 export async function backupOrders(
-  client: any,
+  client: ShopifyClientWrapper,
   outputDir: string,
 ): Promise<BackupResult> {
   try {
     // Fetch all orders using pagination utility
-    const { items: allOrders } = await fetchAllPages(
+    const { items: allOrders } = await fetchAllPages<Record<string, unknown>>(
       client,
       'orders',
       'orders',
@@ -32,8 +32,9 @@ export async function backupOrders(
     );
 
     return { success: true, count: allOrders.length };
-  } catch (error: any) {
-    console.warn('Orders backup failed:', error.message);
-    return { success: false, count: 0, error: error.message };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn('Orders backup failed:', errorMessage);
+    return { success: false, count: 0, error: errorMessage };
   }
 }

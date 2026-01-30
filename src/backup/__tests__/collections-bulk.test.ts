@@ -5,6 +5,7 @@ import os from 'node:os';
 import type { BackupResult } from '../../types.js';
 import type { BulkOperation, CollectionRuleSet } from '../../types/graphql.js';
 import { BulkOperationStatus, BulkOperationErrorCode } from '../../types/graphql.js';
+import type { GraphQLClient } from '../../graphql/client.js';
 
 // Mock the bulk operation dependencies
 vi.mock('../../graphql/bulk-operations.js', () => ({
@@ -40,9 +41,7 @@ import { backupCollectionsBulk } from '../collections-bulk.js';
 
 describe('backupCollectionsBulk', () => {
   let tmpDir: string;
-  let mockClient: {
-    request: ReturnType<typeof vi.fn>;
-  };
+  let mockClient: Pick<GraphQLClient, 'request'>;
 
   /**
    * Helper to create a mock completed bulk operation
@@ -164,7 +163,7 @@ describe('backupCollectionsBulk', () => {
         ...createFlatCollectionData('2'),
       ]);
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       // Verify success
       expect(result.success).toBe(true);
@@ -184,7 +183,7 @@ describe('backupCollectionsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      await backupCollectionsBulk(mockClient as any, tmpDir);
+      await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(submitBulkOperation).toHaveBeenCalledTimes(1);
       expect(submitBulkOperation).toHaveBeenCalledWith(
@@ -200,7 +199,7 @@ describe('backupCollectionsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      await backupCollectionsBulk(mockClient as any, tmpDir);
+      await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(pollBulkOperation).toHaveBeenCalledTimes(1);
       expect(pollBulkOperation).toHaveBeenCalledWith(
@@ -219,7 +218,7 @@ describe('backupCollectionsBulk', () => {
       );
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      await backupCollectionsBulk(mockClient as any, tmpDir);
+      await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(downloadBulkOperationResults).toHaveBeenCalledWith(resultUrl);
     });
@@ -236,7 +235,7 @@ describe('backupCollectionsBulk', () => {
       vi.mocked(submitBulkOperation).mockResolvedValue('gid://shopify/BulkOperation/123');
       vi.mocked(pollBulkOperation).mockResolvedValue(operationWithNoUrl);
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
       expect(result.count).toBe(0);
@@ -254,7 +253,7 @@ describe('backupCollectionsBulk', () => {
       );
       vi.mocked(downloadBulkOperationResults).mockResolvedValue([]);
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
       expect(result.count).toBe(0);
@@ -271,7 +270,7 @@ describe('backupCollectionsBulk', () => {
         new Error('A bulk operation is already in progress')
       );
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.count).toBe(0);
@@ -284,7 +283,7 @@ describe('backupCollectionsBulk', () => {
         new BulkOperationError(BulkOperationStatus.FAILED, BulkOperationErrorCode.TIMEOUT, 'Operation timed out')
       );
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.count).toBe(0);
@@ -298,7 +297,7 @@ describe('backupCollectionsBulk', () => {
         new Error('Failed to download bulk operation results: 404 Not Found')
       );
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/download|404/i);
@@ -310,7 +309,7 @@ describe('backupCollectionsBulk', () => {
         new BulkOperationError(BulkOperationStatus.CANCELED, null, 'Operation was canceled')
       );
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/cancel/i);
@@ -330,7 +329,7 @@ describe('backupCollectionsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
 
@@ -357,7 +356,7 @@ describe('backupCollectionsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
 
@@ -387,7 +386,7 @@ describe('backupCollectionsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '1' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
 
@@ -412,7 +411,7 @@ describe('backupCollectionsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation({ objectCount: '2' }));
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      const result = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(true);
 
@@ -431,7 +430,7 @@ describe('backupCollectionsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(createFlatCollectionData('1'));
 
-      await backupCollectionsBulk(mockClient as any, tmpDir);
+      await backupCollectionsBulk(mockClient, tmpDir);
 
       const filePath = path.join(tmpDir, 'collections.json');
 
@@ -453,7 +452,7 @@ describe('backupCollectionsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(createFlatCollectionData('42'));
 
-      await backupCollectionsBulk(mockClient as any, tmpDir);
+      await backupCollectionsBulk(mockClient, tmpDir);
 
       const expectedPath = path.join(tmpDir, 'collections.json');
       const content = await fs.readFile(expectedPath, 'utf-8');
@@ -474,7 +473,7 @@ describe('backupCollectionsBulk', () => {
       vi.mocked(pollBulkOperation).mockResolvedValue(createCompletedOperation());
       vi.mocked(downloadBulkOperationResults).mockResolvedValue(flatData);
 
-      await backupCollectionsBulk(mockClient as any, tmpDir);
+      await backupCollectionsBulk(mockClient, tmpDir);
 
       const content = await fs.readFile(path.join(tmpDir, 'collections.json'), 'utf-8');
       const collections = JSON.parse(content);
@@ -504,7 +503,7 @@ describe('backupCollectionsBulk', () => {
         ...createFlatCollectionData('3'),
       ]);
 
-      const result: BackupResult = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result: BackupResult = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result).toEqual({
         success: true,
@@ -517,7 +516,7 @@ describe('backupCollectionsBulk', () => {
 
       vi.mocked(submitBulkOperation).mockRejectedValue(new Error(errorMessage));
 
-      const result: BackupResult = await backupCollectionsBulk(mockClient as any, tmpDir);
+      const result: BackupResult = await backupCollectionsBulk(mockClient, tmpDir);
 
       expect(result.success).toBe(false);
       expect(result.count).toBe(0);

@@ -122,8 +122,8 @@ describe('reconstructNestedObjects', () => {
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe('gid://shopify/Customer/123');
       expect(result[0].addresses).toHaveLength(2);
-      expect((result[0].addresses as any[])[0].address1).toBe('123 Main St');
-      expect((result[0].addresses as any[])[1].address1).toBe('456 Oak Ave');
+      expect((result[0].addresses as Array<Record<string, unknown>>)[0].address1).toBe('123 Main St');
+      expect((result[0].addresses as Array<Record<string, unknown>>)[1].address1).toBe('456 Oak Ave');
       expect(result[1].id).toBe('gid://shopify/Customer/999');
       expect(result[1].addresses).toEqual([]);
     });
@@ -157,10 +157,10 @@ describe('reconstructNestedObjects', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0].metafields).toHaveLength(2);
-      expect((result[0].metafields as any[])[0].key).toBe('custom.field1');
-      expect((result[0].metafields as any[])[1].key).toBe('custom.field3');
+      expect((result[0].metafields as Array<Record<string, unknown>>)[0].key).toBe('custom.field1');
+      expect((result[0].metafields as Array<Record<string, unknown>>)[1].key).toBe('custom.field3');
       expect(result[1].metafields).toHaveLength(1);
-      expect((result[1].metafields as any[])[0].key).toBe('custom.field2');
+      expect((result[1].metafields as Array<Record<string, unknown>>)[0].key).toBe('custom.field2');
     });
 
     it('should remove __parentId from child objects in result', () => {
@@ -171,8 +171,8 @@ describe('reconstructNestedObjects', () => {
 
       const result = reconstructNestedObjects(flatData, 'addresses');
 
-      expect((result[0].addresses as any[])[0]).not.toHaveProperty('__parentId');
-      expect((result[0].addresses as any[])[0].address1).toBe('123 Main St');
+      expect((result[0].addresses as Array<Record<string, unknown>>)[0]).not.toHaveProperty('__parentId');
+      expect((result[0].addresses as Array<Record<string, unknown>>)[0].address1).toBe('123 Main St');
     });
   });
 
@@ -187,7 +187,7 @@ describe('reconstructNestedObjects', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].variants).toHaveLength(1);
-      expect((result[0].variants as any[])[0].sku).toBe('SKU-001');
+      expect((result[0].variants as Array<Record<string, unknown>>)[0].sku).toBe('SKU-001');
     });
 
     it('should preserve all parent properties', () => {
@@ -236,7 +236,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Metafield/401', namespace: 'custom', key: 'note', __parentId: 'gid://shopify/Order/1' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result).toHaveLength(1);
       expect(result[0].lineItems).toHaveLength(2);
@@ -252,11 +252,11 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Refund/502', createdAt: '2024-01-16', __parentId: 'gid://shopify/Order/1' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result).toHaveLength(1);
       expect(result[0].refunds).toHaveLength(2);
-      expect(result[0].refunds[0].createdAt).toBe('2024-01-15');
+      expect((result[0].refunds as Array<Record<string, unknown>>)[0].createdAt).toBe('2024-01-15');
     });
 
     it('should reconstruct multiple orders with interleaved children', () => {
@@ -269,16 +269,16 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/OrderTransaction/202', kind: 'SALE', __parentId: 'gid://shopify/Order/2' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result).toHaveLength(2);
       expect(result[0].name).toBe('#1001');
       expect(result[0].lineItems).toHaveLength(1);
-      expect(result[0].lineItems[0].title).toBe('Product A');
+      expect((result[0].lineItems as Array<Record<string, unknown>>)[0].title).toBe('Product A');
       expect(result[0].transactions).toHaveLength(1);
       expect(result[1].name).toBe('#1002');
       expect(result[1].lineItems).toHaveLength(1);
-      expect(result[1].lineItems[0].title).toBe('Product B');
+      expect((result[1].lineItems as Array<Record<string, unknown>>)[0].title).toBe('Product B');
       expect(result[1].transactions).toHaveLength(1);
     });
 
@@ -288,10 +288,10 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/ShippingLine/601', title: 'Standard Shipping', __parentId: 'gid://shopify/Order/1' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result[0].shippingLines).toHaveLength(1);
-      expect(result[0].shippingLines[0].title).toBe('Standard Shipping');
+      expect((result[0].shippingLines as Array<Record<string, unknown>>)[0].title).toBe('Standard Shipping');
     });
 
     it('should handle order with discount applications', () => {
@@ -300,10 +300,10 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/DiscountApplication/701', title: '10% OFF', __parentId: 'gid://shopify/Order/1' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result[0].discountApplications).toHaveLength(1);
-      expect(result[0].discountApplications[0].title).toBe('10% OFF');
+      expect((result[0].discountApplications as Array<Record<string, unknown>>)[0].title).toBe('10% OFF');
     });
   });
 
@@ -317,7 +317,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Metafield/301', namespace: 'custom', key: 'material', __parentId: 'gid://shopify/Product/1' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Product');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Product');
 
       expect(result).toHaveLength(1);
       expect(result[0].variants).toHaveLength(2);
@@ -331,10 +331,10 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/MediaImage/201', url: 'https://cdn.shopify.com/1.jpg', __parentId: 'gid://shopify/Product/1' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Product');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Product');
 
       expect(result[0].images).toHaveLength(1);
-      expect(result[0].images[0].url).toBe('https://cdn.shopify.com/1.jpg');
+      expect((result[0].images as Array<Record<string, unknown>>)[0].url).toBe('https://cdn.shopify.com/1.jpg');
     });
 
     it('should reconstruct variant metafields attached to correct variants (multi-level nesting)', () => {
@@ -347,7 +347,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Metafield/303', namespace: 'custom', key: 'color_code', __parentId: 'gid://shopify/ProductVariant/102' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Product');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Product');
       const variants = result[0].variants as Array<Record<string, unknown>>;
       const v0Metafields = variants[0].metafields as Array<Record<string, unknown>>;
       const v1Metafields = variants[1].metafields as Array<Record<string, unknown>>;
@@ -371,7 +371,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Metafield/302', namespace: 'custom', key: 'variant_material', __parentId: 'gid://shopify/ProductVariant/101' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Product');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Product');
       const metafields = result[0].metafields as Array<Record<string, unknown>>;
       const variants = result[0].variants as Array<Record<string, unknown>>;
       const variantMetafields = variants[0].metafields as Array<Record<string, unknown>>;
@@ -395,7 +395,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Metafield/302', namespace: 'custom', key: 'b_meta', __parentId: 'gid://shopify/Product/2' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Product');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Product');
 
       expect(result).toHaveLength(2);
       expect(result[0].title).toBe('Product A');
@@ -418,7 +418,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Metafield/201', namespace: 'custom', key: 'season', __parentId: 'gid://shopify/Collection/1' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Collection');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Collection');
 
       expect(result).toHaveLength(1);
       expect(result[0].products).toHaveLength(2);
@@ -431,7 +431,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Metafield/201', namespace: 'custom', key: 'banner', __parentId: 'gid://shopify/Collection/1' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Collection');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Collection');
 
       expect(result[0].products).toHaveLength(0);
       expect(result[0].metafields).toHaveLength(1);
@@ -447,7 +447,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Metafield/201', namespace: 'custom', key: 'loyalty_tier', __parentId: 'gid://shopify/Customer/1' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Customer');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Customer');
 
       expect(result).toHaveLength(1);
       expect(result[0].addresses).toHaveLength(2);
@@ -466,7 +466,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/LineItem/101', title: 'Product', __parentId: 'gid://shopify/Order/999' }, // Parent doesn't exist
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result).toHaveLength(1);
       expect(result[0].lineItems).toHaveLength(0); // Orphan not attached
@@ -479,7 +479,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Order/3', name: '#1003' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result[0].name).toBe('#1002');
       expect(result[1].name).toBe('#1001');
@@ -492,7 +492,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/ProductVariant/101', title: 'Small', __parentId: 'gid://shopify/Product/1' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Product');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Product');
       const variants = result[0].variants as Array<Record<string, unknown>>;
 
       expect(variants[0]).not.toHaveProperty('__parentId');
@@ -503,7 +503,7 @@ describe('reconstructBulkData', () => {
         { id: 'gid://shopify/Order/1', name: '#1001' },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result[0].lineItems).toEqual([]);
       expect(result[0].transactions).toEqual([]);
@@ -519,7 +519,7 @@ describe('reconstructBulkData', () => {
       ];
 
       // Should not throw, but unknown child won't be attached
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('#1001');
@@ -532,7 +532,7 @@ describe('reconstructBulkData', () => {
       ];
 
       // When looking for Orders, customer should not be included
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result).toHaveLength(0);
     });
@@ -549,7 +549,7 @@ describe('reconstructBulkData', () => {
         },
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Order');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Order');
 
       expect(result[0].name).toBe('#1001');
       expect(result[0].email).toBe('customer@example.com');
@@ -572,7 +572,7 @@ describe('reconstructBulkData', () => {
         // Variant 103 gets no metafields
       ];
 
-      const result = reconstructBulkData<any>(flatData, 'Product');
+      const result = reconstructBulkData<Record<string, unknown>>(flatData, 'Product');
       const variants = result[0].variants as Array<Record<string, unknown>>;
 
       expect(variants).toHaveLength(3);
