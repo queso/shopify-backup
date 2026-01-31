@@ -17,6 +17,7 @@
  */
 
 import fs from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
 import path from 'node:path';
 import type { GraphQLClient } from '../graphql/client.js';
 import type { BackupResult } from '../types.js';
@@ -25,7 +26,7 @@ import { submitBulkOperation, CUSTOMER_BULK_QUERY } from '../graphql/bulk-operat
 import { pollBulkOperation } from '../graphql/polling.js';
 import { downloadBulkOperationResults } from '../graphql/download.js';
 import { reconstructBulkData, type BulkOperationRecord } from '../graphql/jsonl.js';
-import { fetchAllPages, type ShopifyClientWrapper } from '../pagination.js';
+import { fetchAllPagesStreaming, type ShopifyClientWrapper } from '../pagination.js';
 
 /**
  * Backup all customers using Shopify bulk operations with REST API fallback.
@@ -110,27 +111,55 @@ export async function backupCustomersBulk(
 }
 
 /**
- * Backup customers using REST API (fallback for plans without Protected Customer Data access)
+ * Backup customers using REST API with streaming to avoid memory issues.
+ * Writes each page directly to disk instead of accumulating in memory.
  */
 async function backupCustomersRest(
   client: ShopifyClientWrapper,
   outputDir: string
 ): Promise<BackupResult> {
+  const outputPath = path.join(outputDir, 'customers.json');
+  const writeStream = createWriteStream(outputPath, { encoding: 'utf-8' });
+  let totalCount = 0;
+  let isFirst = true;
+
   try {
-    const { items: allCustomers } = await fetchAllPages<Record<string, unknown>>(client, 'customers', 'customers');
+    // Start JSON array
+    writeStream.write('[\n');
 
-    // REST API doesn't include metafields efficiently - initialize as empty
-    for (const customer of allCustomers) {
-      customer.metafields = [];
-    }
+    await fetchAllPagesStreaming<Record<string, unknown>>(
+      client,
+      'customers',
+      'customers',
+      undefined,
+      (items) => {
+        for (const customer of items) {
+          // REST API doesn't include metafields efficiently - initialize as empty
+          customer.metafields = [];
 
-    await fs.writeFile(
-      path.join(outputDir, 'customers.json'),
-      JSON.stringify(allCustomers, null, 2),
+          if (!isFirst) {
+            writeStream.write(',\n');
+          }
+          isFirst = false;
+          writeStream.write(JSON.stringify(customer, null, 2));
+          totalCount++;
+        }
+      }
     );
 
-    return { success: true, count: allCustomers.length };
+    // Close JSON array
+    writeStream.write('\n]');
+    writeStream.end();
+
+    // Wait for stream to finish
+    await new Promise<void>((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+
+    return { success: true, count: totalCount };
   } catch (error) {
+    writeStream.end();
     const errorMessage = error instanceof Error ? error.message : String(error);
     return { success: false, count: 0, error: errorMessage };
   }

@@ -13,4 +13,4 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 USER nodejs
-CMD ["node", "dist/index.js"]
+CMD ["node", "--max-old-space-size=2048", "dist/index.js"]

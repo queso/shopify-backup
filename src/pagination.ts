@@ -100,3 +100,54 @@ export async function fetchAllPages<T>(
 
   return { items: allItems, pageInfo };
 }
+
+/**
+ * Fetches all pages of a Shopify REST API resource with a callback per page.
+ * This avoids accumulating all items in memory - useful for large datasets.
+ *
+ * @param client - Shopify API client instance
+ * @param resourcePath - API endpoint path (e.g., 'products', 'customers', 'orders')
+ * @param bodyKey - Key in response.body that contains the array of items
+ * @param options - Additional options like extra query parameters
+ * @param onPage - Callback invoked with each page of items
+ * @returns Promise resolving to total count and final pageInfo
+ */
+export async function fetchAllPagesStreaming<T>(
+  client: ShopifyClientWrapper,
+  resourcePath: string,
+  bodyKey: string,
+  options: PaginationOptions | undefined,
+  onPage: (items: T[]) => void,
+): Promise<{ count: number; pageInfo?: PageInfo }> {
+  let pageInfo: PageInfo | undefined = undefined;
+  let totalCount = 0;
+
+  do {
+    let query: QueryParams;
+
+    if (pageInfo?.nextPage?.query) {
+      query = { ...pageInfo.nextPage.query };
+    } else {
+      query = { limit: 250, ...options?.extraQuery };
+    }
+
+    const response: RestRequestReturn<Record<string, unknown>> = await withRetry(() =>
+      client.rest.get({
+        path: resourcePath,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        query: query as any,
+        tries: 1,
+      })
+    );
+    const items = response.body[bodyKey];
+
+    if (Array.isArray(items)) {
+      onPage(items as T[]);
+      totalCount += items.length;
+    }
+
+    pageInfo = response.pageInfo;
+  } while (pageInfo?.nextPage);
+
+  return { count: totalCount, pageInfo };
+}

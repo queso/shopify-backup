@@ -17,6 +17,7 @@
  */
 
 import fs from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
 import path from 'node:path';
 import type { GraphQLClient } from '../graphql/client.js';
 import type { BackupResult } from '../types.js';
@@ -25,7 +26,7 @@ import { submitBulkOperation, ORDER_BULK_QUERY } from '../graphql/bulk-operation
 import { pollBulkOperation } from '../graphql/polling.js';
 import { downloadBulkOperationResults } from '../graphql/download.js';
 import { reconstructBulkData, type BulkOperationRecord } from '../graphql/jsonl.js';
-import { fetchAllPages, type ShopifyClientWrapper } from '../pagination.js';
+import { fetchAllPagesStreaming, type ShopifyClientWrapper } from '../pagination.js';
 
 /**
  * Backup all orders using Shopify bulk operations with REST API fallback.
@@ -110,32 +111,55 @@ export async function backupOrdersBulk(
 }
 
 /**
- * Backup orders using REST API (fallback for plans without Protected Customer Data access)
+ * Backup orders using REST API with streaming to avoid memory issues.
+ * Writes each page directly to disk instead of accumulating in memory.
  */
 async function backupOrdersRest(
   client: ShopifyClientWrapper,
   outputDir: string
 ): Promise<BackupResult> {
+  const outputPath = path.join(outputDir, 'orders.json');
+  const writeStream = createWriteStream(outputPath, { encoding: 'utf-8' });
+  let totalCount = 0;
+  let isFirst = true;
+
   try {
-    const { items: allOrders } = await fetchAllPages<Record<string, unknown>>(
+    // Start JSON array
+    writeStream.write('[\n');
+
+    await fetchAllPagesStreaming<Record<string, unknown>>(
       client,
       'orders',
       'orders',
-      { extraQuery: { status: 'any' } }
+      { extraQuery: { status: 'any' } },
+      (items) => {
+        for (const order of items) {
+          // REST API doesn't include metafields efficiently - initialize as empty
+          order.metafields = [];
+
+          if (!isFirst) {
+            writeStream.write(',\n');
+          }
+          isFirst = false;
+          writeStream.write(JSON.stringify(order, null, 2));
+          totalCount++;
+        }
+      }
     );
 
-    // REST API doesn't include metafields efficiently - initialize as empty
-    for (const order of allOrders) {
-      order.metafields = [];
-    }
+    // Close JSON array
+    writeStream.write('\n]');
+    writeStream.end();
 
-    await fs.writeFile(
-      path.join(outputDir, 'orders.json'),
-      JSON.stringify(allOrders, null, 2),
-    );
+    // Wait for stream to finish
+    await new Promise<void>((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
 
-    return { success: true, count: allOrders.length };
+    return { success: true, count: totalCount };
   } catch (error) {
+    writeStream.end();
     const errorMessage = error instanceof Error ? error.message : String(error);
     return { success: false, count: 0, error: errorMessage };
   }

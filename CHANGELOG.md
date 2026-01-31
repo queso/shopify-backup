@@ -12,6 +12,11 @@ All notable changes to this project will be documented in this file.
 - **REST API pagination** - Fixed cursor-based pagination mixing original query params with page_info cursor
   - Shopify rejects requests that combine `page_info` with other query parameters
   - Subsequent paginated requests now only include cursor params
+- **Out of memory crash on REST fallback** - Streaming write for large datasets
+  - REST fallback for orders (124MB) and customers caused JavaScript heap OOM
+  - Now streams each record to disk instead of accumulating in memory
+  - Added `fetchAllPagesStreaming()` for memory-efficient pagination
+  - Increased Node memory limit to 2GB in Dockerfile as safety net
 
 ## [0.3.0] - 2026-01-29
 
