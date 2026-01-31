@@ -66,12 +66,16 @@ export async function fetchAllPages<T>(
   let pageInfo: PageInfo | undefined = undefined;
 
   do {
-    // Build request parameters - start with limit and any extra query params
-    const query: QueryParams = { limit: 250, ...options?.extraQuery };
+    // Build request parameters
+    let query: QueryParams;
 
     if (pageInfo?.nextPage?.query) {
       // Shopify doesn't allow original query params when using page_info cursor
-      Object.assign(query, pageInfo.nextPage.query);
+      // Only use the pagination cursor params for subsequent requests
+      query = { ...pageInfo.nextPage.query };
+    } else {
+      // Initial request - include limit and any extra query params
+      query = { limit: 250, ...options?.extraQuery };
     }
 
     // Note: query is typed as QueryParams (Record<string, unknown>) but the Shopify API

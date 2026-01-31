@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-01-30
+
+### Fixed
+- **Image downloads for GraphQL products** - Was only downloading ~101 images instead of all 2,558
+  - GraphQL images don't have `position` field, causing all images per product to save as `undefined.jpg` (overwriting each other)
+  - Now uses array index as fallback when `position` is missing
+  - Uses `legacyResourceId` for directory names instead of full GID (`gid://shopify/Product/...`) which created invalid paths with colons
+- **REST API pagination** - Fixed cursor-based pagination mixing original query params with page_info cursor
+  - Shopify rejects requests that combine `page_info` with other query parameters
+  - Subsequent paginated requests now only include cursor params
+
 ## [0.3.0] - 2026-01-29
 
 ### Added

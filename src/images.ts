@@ -9,10 +9,11 @@ const MAX_RETRIES = 3;
  */
 interface ProductWithImages {
   id: number | string;
+  legacyResourceId?: string;  // GraphQL numeric ID
   images?: Array<{
     src?: string;  // REST format
     url?: string;  // GraphQL format
-    position: number;
+    position?: number;  // REST has position, GraphQL doesn't
   }> | null;
 }
 
@@ -36,16 +37,21 @@ export async function downloadProductImages(
   for (const product of products) {
     if (!product.images || product.images.length === 0) continue;
 
-    const productDir = path.join(outputDir, 'images', String(product.id));
+    // Use legacyResourceId (numeric) for GraphQL, fall back to id for REST
+    const productId = product.legacyResourceId || String(product.id);
+    const productDir = path.join(outputDir, 'images', productId);
     fs.mkdirSync(productDir, { recursive: true });
 
-    for (const image of product.images) {
+    for (let i = 0; i < product.images.length; i++) {
+      const image = product.images[i];
       // Support both GraphQL (url) and REST (src) formats, prefer url
       const imageUrl = image.url || image.src;
       if (!imageUrl) continue;
 
       const ext = getExtension(imageUrl);
-      const filename = `${image.position}${ext}`;
+      // Use position if available (REST), otherwise use array index (GraphQL)
+      const position = image.position ?? i + 1;
+      const filename = `${position}${ext}`;
       const filePath = path.join(productDir, filename);
 
       // Skip if already exists (idempotent)
